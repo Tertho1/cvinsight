@@ -1,0 +1,39 @@
+{
+  "taxonomy_version": "1.0",
+  "categories": {
+    "programming_languages": [
+      "Python", "Java", "JavaScript", "TypeScript", "C", "C++", "C#",
+      "R", "Go", "Rust", "Swift", "Kotlin", "PHP", "Ruby", "Scala",
+      "MATLAB", "SQL", "Bash", "Shell", "Perl"
+    ],
+    "web_frameworks": [
+      "React", "Angular", "Vue", "Next.js", "Django", "Flask", "FastAPI",
+      "Spring Boot", "Node.js", "Express", "Laravel", "Ruby on Rails"
+    ],
+    "databases": [
+      "MySQL", "PostgreSQL", "MongoDB", "SQLite", "Redis", "Cassandra",
+      "Oracle", "SQL Server", "DynamoDB", "Firebase", "Elasticsearch"
+    ],
+    "cloud_devops": [
+      "AWS", "Azure", "Google Cloud", "GCP", "Docker", "Kubernetes",
+      "Jenkins", "GitHub Actions", "CI/CD", "Terraform", "Ansible",
+      "Linux", "Unix", "Nginx", "Apache"
+    ],
+    "data_ml": [
+      "Machine Learning", "Deep Learning", "NLP", "Computer Vision",
+      "TensorFlow", "PyTorch", "Keras", "scikit-learn", "XGBoost",
+      "Pandas", "NumPy", "Matplotlib", "Seaborn", "Tableau", "Power BI",
+      "Spark", "Hadoop", "Airflow", "Data Analysis", "Data Science"
+    ],
+    "tools": [
+      "Git", "GitHub", "GitLab", "Jira", "Confluence", "Slack",
+      "VS Code", "IntelliJ", "Eclipse", "Postman", "Figma",
+      "Microsoft Office", "Excel", "PowerPoint"
+    ],
+    "soft_skills": [
+      "Leadership", "Communication", "Teamwork", "Problem Solving",
+      "Critical Thinking", "Time Management", "Project Management",
+      "Agile", "Scrum", "Kanban"
+    ]
+  }
+}
