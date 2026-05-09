@@ -195,3 +195,139 @@ def test_quick_check_clean_cv():
     )
     warnings = quick_check(cv)
     assert warnings == []
+
+
+# ── Tests using real dataset samples ──────────────────────────
+# These tests load actual CV text from our processed datasets
+# to make sure the schema handles real-world data correctly.
+
+import pandas as pd
+import os
+
+
+def test_schema_with_real_ner_cv():
+    """
+    Load a real CV from the NER dataset and confirm it passes
+    schema creation without errors.
+    """
+    path = 'data/processed/ner_resumes_clean.csv'
+    if not os.path.exists(path):
+        pytest.skip('Processed NER dataset not found — run clean_datasets.py first')
+
+    df = pd.read_csv(path)
+    sample_text = df['text'].iloc[0]
+
+    # Schema should accept any non-empty string as raw_text
+    cv = CVSchema(raw_text=sample_text)
+    cv.cv_id = cv.generate_id()
+
+    assert len(cv.raw_text) > 50
+    assert len(cv.cv_id) == 12
+    assert cv.total_score == 0       # not scored yet
+    assert cv.label == ''            # not labeled yet
+
+
+def test_schema_with_real_classification_cv():
+    """
+    Load a CV from the classification dataset.
+    Confirm category field (which we add manually) stores correctly.
+    """
+    path = 'data/processed/classification_clean.csv'
+    if not os.path.exists(path):
+        pytest.skip('Processed classification dataset not found')
+
+    df = pd.read_csv(path)
+    sample = df.iloc[0]
+
+    cv = CVSchema(
+        raw_text=sample['text'],
+        # We store the job category as an achievement tag for now
+        # In Week 4 this becomes a proper label
+        achievements=[f"Job Category: {sample['category']}"]
+    )
+
+    assert cv.raw_text == sample['text']
+    assert len(cv.achievements) == 1
+
+
+def test_empty_cv_edge_case():
+    """
+    An empty string as raw_text should still create a valid schema.
+    The extractor will produce empty fields — that is acceptable.
+    The scorer will then give it a score of 0 and label 'Weak'.
+    """
+    cv = CVSchema(raw_text='')
+    cv.cv_id = cv.generate_id()
+
+    assert cv.raw_text == ''
+    assert cv.total_score == 0
+    assert cv.skills == []
+    assert cv.education == []
+
+
+def test_missing_optional_fields():
+    """
+    A CV with only required fields and no optional ones
+    should still be valid. Optional fields default to None or [].
+    """
+    cv = CVSchema(
+        name='Test Person',
+        email='test@example.com',
+        skills=['Python', 'SQL'],
+        total_score=55,
+        label='Average'
+    )
+    # These optional fields should be None or empty by default
+    assert cv.phone == ''
+    assert cv.projects == []
+    assert cv.certifications == []
+    assert cv.jd_match.semantic_similarity == 0.0
+
+
+def test_very_long_cv_text():
+    """
+    Some CVs are very long (we saw max 99,973 chars in NER dataset).
+    The schema must handle this without truncating or crashing.
+    """
+    long_text = 'Python developer with experience. ' * 1000  # ~34,000 chars
+    cv = CVSchema(raw_text=long_text)
+    assert len(cv.raw_text) == len(long_text)
+
+
+def test_unicode_in_cv():
+    """
+    CVs from non-English speaking countries contain accented
+    characters, Arabic, Bengali script etc.
+    The schema must store these without modification.
+    """
+    cv = CVSchema(
+        name='মোহাম্মদ রহিম',          # Bengali name
+        email='rahim@example.com',
+        skills=['Python', 'মেশিন লার্নিং'],  # Bengali skill name
+        achievements=['তথ্য বিজ্ঞান পুরস্কার ২০২৩']  # Bengali achievement
+    )
+    assert 'মোহাম্মদ' in cv.name
+    assert any('মেশিন' in s for s in cv.skills)
+
+
+def test_netsol_score_range():
+    """
+    Netsol scores range 0-9.55 (10-point scale).
+    Confirm our schema can store them as floats.
+    """
+    path = 'data/processed/netsol_clean.csv'
+    if not os.path.exists(path):
+        pytest.skip('Processed netsol dataset not found')
+
+    df = pd.read_csv(path)
+    scores = df['score'].dropna()
+
+    # All scores should be between 0 and 10
+    assert scores.min() >= 0
+    assert scores.max() <= 10
+
+    # Store a real score in jd_match
+    sample_score = float(scores.iloc[0])
+    cv = CVSchema()
+    cv.jd_match.final_match_score = sample_score / 10.0  # normalize to 0-1
+    assert 0.0 <= cv.jd_match.final_match_score <= 1.0
