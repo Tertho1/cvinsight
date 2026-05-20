@@ -1,17 +1,24 @@
 """
 src/parser/parser.py
-CVInsight — Week 2, Day 9
+CVInsight — Week 2, Day 9 (updated Day 10)
 
-Unified CV parser entry point.
+Unified CV parser entry point with OCR fallback.
 
 Usage:
     from src.parser.parser import parse_cv
 
-    text = parse_cv("path/to/cv.pdf")   # → dispatches to pdf_parser
-    text = parse_cv("path/to/cv.docx")  # → dispatches to docx_parser
-    text = parse_cv("path/to/cv.txt")   # → dispatches to txt_parser
+    text = parse_cv("path/to/cv.pdf")    # digital PDF
+    text = parse_cv("path/to/cv.pdf")    # scanned PDF -> auto OCR fallback
+    text = parse_cv("path/to/cv.docx")
+    text = parse_cv("path/to/cv.txt")
 
 Supported formats: .pdf, .docx, .txt
+
+OCR fallback (Day 10):
+    If a PDF yields < 50 chars of text (scanned/image-based),
+    the parser automatically retries with pytesseract OCR.
+    If Tesseract is not installed, it logs a warning and returns
+    whatever text was extracted (may be empty).
 """
 
 import logging
@@ -23,26 +30,25 @@ from src.parser.txt_parser import parse_txt
 
 logger = logging.getLogger(__name__)
 
-# Map file extension → parser function
-_PARSERS = {
-    ".pdf":  parse_pdf,
-    ".docx": parse_docx,
-    ".txt":  parse_txt,
-}
+SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".txt"]
 
-SUPPORTED_EXTENSIONS = list(_PARSERS.keys())
+# Minimum chars threshold -- below this, PDF is likely scanned
+_OCR_THRESHOLD = 50
 
 
 def parse_cv(path: str) -> str:
     """
     Parse a CV file into plain text, dispatching by file extension.
 
+    For PDFs: tries digital extraction first. If result is < 50 chars,
+    automatically falls back to OCR (pytesseract).
+
     Args:
         path: Path to the CV file (.pdf, .docx, or .txt).
 
     Returns:
         Extracted plain text, cleaned and normalized.
-        Empty string if the file yields no text.
+        Empty string if all extraction methods fail.
 
     Raises:
         FileNotFoundError: if the file does not exist.
@@ -51,7 +57,7 @@ def parse_cv(path: str) -> str:
     cv_path = Path(path)
     ext = cv_path.suffix.lower()
 
-    if ext not in _PARSERS:
+    if ext not in SUPPORTED_EXTENSIONS:
         raise ValueError(
             f"Unsupported file type '{ext}'. "
             f"Supported: {', '.join(SUPPORTED_EXTENSIONS)}"
@@ -60,9 +66,55 @@ def parse_cv(path: str) -> str:
     if not cv_path.exists():
         raise FileNotFoundError(f"CV file not found: {path}")
 
-    logger.info(f"parse_cv: dispatching {cv_path.name} → {ext} parser")
-    parser_fn = _PARSERS[ext]
-    return parser_fn(str(cv_path))
+    logger.info(f"parse_cv: {cv_path.name}")
+
+    # --- DOCX and TXT: direct dispatch, no OCR needed ---
+    if ext == ".docx":
+        return parse_docx(str(cv_path))
+
+    if ext == ".txt":
+        return parse_txt(str(cv_path))
+
+    # --- PDF: digital extraction first, then OCR fallback ---
+    text = parse_pdf(str(cv_path))
+
+    if len(text.strip()) >= _OCR_THRESHOLD:
+        logger.info(f"Digital PDF extraction OK ({len(text)} chars)")
+        return text
+
+    # Scanned PDF detected -- try OCR
+    logger.info(
+        f"PDF yielded only {len(text.strip())} chars (< {_OCR_THRESHOLD}). "
+        f"Attempting OCR fallback..."
+    )
+
+    try:
+        from src.parser.ocr_parser import ocr_pdf, ocr_available
+
+        if not ocr_available():
+            logger.warning(
+                "Tesseract not installed -- OCR skipped. "
+                "To enable: install Tesseract from "
+                "https://github.com/UB-Mannheim/tesseract/wiki "
+                "then run: pip install pytesseract pdf2image"
+            )
+            return text
+
+        ocr_text = ocr_pdf(str(cv_path))
+
+        if ocr_text and len(ocr_text.strip()) > len(text.strip()):
+            logger.info(f"OCR succeeded ({len(ocr_text)} chars)")
+            return ocr_text
+        else:
+            logger.warning("OCR returned no improvement -- returning digital text")
+            return text
+
+    except ImportError as e:
+        logger.warning(f"OCR dependencies missing: {e}")
+        return text
+    except Exception as e:
+        logger.warning(f"OCR failed unexpectedly: {e}")
+        return text
 
 
 def get_supported_extensions() -> list[str]:

@@ -1,0 +1,21 @@
+cv_id,text_length,sections_found,core_sections,num_sections,status,reason
+cv_0812,245,"skills, summary",skills,2,PASS,OK
+cv_2526,249,"skills, summary",skills,2,PASS,OK
+cv_2264,262,"skills, summary",skills,2,PASS,OK
+cv_3716,272,"skills, summary",skills,2,PASS,OK
+cv_2344,278,"skills, summary",skills,2,PASS,OK
+cv_2957,263,"skills, summary",skills,2,PASS,OK
+cv_2059,274,"skills, summary",skills,2,PASS,OK
+cv_0387,257,"skills, summary",skills,2,PASS,OK
+cv_1469,255,"skills, summary",skills,2,PASS,OK
+cv_0033,88,"skills, summary",skills,2,PASS,OK
+cv_4338,237,"skills, summary",skills,2,PASS,OK
+cv_2402,251,"skills, summary",skills,2,PASS,OK
+cv_1550,281,"skills, summary",skills,2,PASS,OK
+cv_2829,259,"skills, summary",skills,2,PASS,OK
+cv_2584,282,"skills, summary",skills,2,PASS,OK
+cv_4707,281,"skills, summary",skills,2,PASS,OK
+cv_0657,250,"skills, summary",skills,2,PASS,OK
+cv_0555,249,"skills, summary",skills,2,PASS,OK
+cv_3013,271,"skills, summary",skills,2,PASS,OK
+cv_0079,219,summary,,1,FAIL,Only 1 section(s) detected
