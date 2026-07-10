@@ -1,39 +1,80 @@
 {
-  "taxonomy_version": "1.0",
+  "taxonomy_version": "1.1",
   "categories": {
     "programming_languages": [
       "Python", "Java", "JavaScript", "TypeScript", "C", "C++", "C#",
       "R", "Go", "Rust", "Swift", "Kotlin", "PHP", "Ruby", "Scala",
-      "MATLAB", "SQL", "Bash", "Shell", "Perl"
+      "MATLAB", "SQL", "Bash", "Shell", "Perl", "Dart", "Lua", "Haskell",
+      "Clojure", "Elixir", "Erlang", "Groovy", "Julia", "Cobol", "Fortran",
+      "Pascal", "Racket", "Scheme", "F#", "PL/SQL", "Solidity", "Terraform",
+      "YAML", "TOML", "GraphQL", "REST", "gRPC", "WebAssembly"
     ],
     "web_frameworks": [
-      "React", "Angular", "Vue", "Next.js", "Django", "Flask", "FastAPI",
-      "Spring Boot", "Node.js", "Express", "Laravel", "Ruby on Rails"
+      "React", "Angular", "Vue", "Next.js", "Nuxt.js", "Django", "Flask", "FastAPI",
+      "Spring Boot", "Spring", "Node.js", "Express", "Laravel", "Ruby on Rails",
+      "ASP.NET", "ASP.NET Core", "Blazor", "Svelte", "SvelteKit", "jQuery",
+      "Bootstrap", "Tailwind CSS", "Material UI", "Shadcn UI", "Redux",
+      "Zustand", "Jinja", "Gatsby", "Remix", "Symfony", "CodeIgniter",
+      "Play Framework", "Phoenix", "Actix"
     ],
     "databases": [
       "MySQL", "PostgreSQL", "MongoDB", "SQLite", "Redis", "Cassandra",
-      "Oracle", "SQL Server", "DynamoDB", "Firebase", "Elasticsearch"
+      "Oracle", "SQL Server", "DynamoDB", "Firebase", "Elasticsearch",
+      "MariaDB", "Neo4j", "CouchDB", "Couchbase", "ClickHouse",
+      "InfluxDB", "TimescaleDB", "Snowflake", "BigQuery", "Redshift",
+      "Supabase", "PlanetScale", "Neon", "CockroachDB", "Pinecone",
+      "Weaviate", "ChromaDB", "Qdrant", "Milvus", "ScyllaDB"
     ],
     "cloud_devops": [
       "AWS", "Azure", "Google Cloud", "GCP", "Docker", "Kubernetes",
-      "Jenkins", "GitHub Actions", "CI/CD", "Terraform", "Ansible",
-      "Linux", "Unix", "Nginx", "Apache"
+      "Jenkins", "GitHub Actions", "GitLab CI", "CI/CD", "Terraform",
+      "Ansible", "Puppet", "Chef", "Linux", "Unix", "Nginx", "Apache",
+      "CloudFormation", "Pulumi", "Vagrant", "Prometheus", "Grafana",
+      "Datadog", "New Relic", "Splunk", "ELK Stack", "Logstash",
+      "Kibana", "ArgoCD", "Helm", "Istio", "Consul", "Vault",
+      "Cloudflare", "Fastly", "Serverless", "Lambda", "ECS", "EKS",
+      "Google Kubernetes Engine", "AKS", "OpenShift", "S3", "Route53"
     ],
     "data_ml": [
       "Machine Learning", "Deep Learning", "NLP", "Computer Vision",
       "TensorFlow", "PyTorch", "Keras", "scikit-learn", "XGBoost",
-      "Pandas", "NumPy", "Matplotlib", "Seaborn", "Tableau", "Power BI",
-      "Spark", "Hadoop", "Airflow", "Data Analysis", "Data Science"
+      "LightGBM", "CatBoost", "Pandas", "NumPy", "Matplotlib",
+      "Seaborn", "Plotly", "Tableau", "Power BI", "Looker",
+      "Spark", "Hadoop", "Airflow", "Data Analysis", "Data Science",
+      "Data Engineering", "Statistical Analysis", "Time Series",
+      "Regression", "Classification", "Clustering", "Neural Networks",
+      "OpenCV", "Hugging Face", "Transformers", "LangChain",
+      "LLM", "GPT", "BERT", "YOLO", "Reinforcement Learning",
+      "Feature Engineering", "MLOps", "MLflow", "Kubeflow",
+      "DVC", "Weights & Biases", "NLTK", "spaCy", "RAG"
     ],
     "tools": [
-      "Git", "GitHub", "GitLab", "Jira", "Confluence", "Slack",
-      "VS Code", "IntelliJ", "Eclipse", "Postman", "Figma",
-      "Microsoft Office", "Excel", "PowerPoint"
+      "Git", "GitHub", "GitLab", "Bitbucket", "Jira", "Confluence",
+      "Slack", "VS Code", "IntelliJ", "Eclipse", "Postman", "Figma",
+      "Microsoft Office", "Excel", "PowerPoint", "Word", "Outlook",
+      "Notion", "Trello", "Asana", "Monday.com", "Linear",
+      "Wireshark", "Fiddler", "Charles Proxy", "Swagger",
+      "OpenAPI", "PostgreSQL", "pgAdmin", "DBeaver", "Datagrip",
+      "Jupyter", "JupyterLab", "Colab", "Miniconda", "Anaconda",
+      "Curl", "HTTPie", "Vim", "Neovim", "Emacs", "Tmux"
+    ],
+    "mobile": [
+      "Android", "iOS", "Kotlin Multiplatform", "Flutter", "React Native",
+      "Swift UI", "UIKit", "Jetpack Compose", "Xamarin", "Cordova",
+      "Ionic", "Expo", "Firebase", "App Store Connect", "Google Play Console",
+      "Fastlane", "TestFlight", "Core Data", "Room"
     ],
     "soft_skills": [
       "Leadership", "Communication", "Teamwork", "Problem Solving",
       "Critical Thinking", "Time Management", "Project Management",
-      "Agile", "Scrum", "Kanban"
+      "Agile", "Scrum", "Kanban", "SAFe", "Product Management",
+      "Mentoring", "Technical Writing", "Public Speaking",
+      "Cross-functional Collaboration", "Decision Making",
+      "Conflict Resolution", "Negotiation", "Presentation Skills",
+      "Stakeholder Management", "Requirements Analysis",
+      "Systems Design", "Code Review", "Pair Programming",
+      "Technical Leadership", "Strategic Planning", "Risk Management",
+      "Change Management", "Continuous Improvement"
     ]
   }
 }

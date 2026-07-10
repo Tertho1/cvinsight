@@ -1,50 +1,148 @@
-# src/extractor/education_extractor.py
-import re, spacy
+import json
+import re
+import spacy
+from src.extractor.utils import try_parse_structured
 
 nlp = spacy.load("en_core_web_sm")
 
-DEGREE_KEYWORDS = [
-    "phd",
-    "ph.d",
-    "bachelor",
-    "b.sc",
-    "b.s.",
-    "master",
-    "m.sc",
-    "m.s.",
-    "mba",
-    "diploma",
-    "associate",
-    "b.tech",
-    "m.tech",
-    "b.e",
-    "m.e",
-]
+DEGREE_KEYWORDS = {
+    "phd": "PhD", "ph.d": "PhD", "doctor of philosophy": "PhD",
+    "master": "Master", "master's": "Master", "masters": "Master",
+    "m.sc": "M.Sc", "m.s.": "M.Sc", "mba": "MBA",
+    "m.tech": "M.Tech", "m.e": "M.E", "m.a": "M.A",
+    "bachelor": "Bachelor", "bachelor's": "Bachelor", "bachelors": "Bachelor",
+    "b.sc": "B.Sc", "b.s.": "B.Sc", "b.tech": "B.Tech",
+    "b.e": "B.E", "b.a": "B.A",
+    "diploma": "Diploma", "associate": "Associate",
+    "hsc": "HSC", "ssc": "SSC", "high school": "High School",
+}
+
+_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+_GPA_RE = re.compile(r"(?:gpa|cgpa|g\.p\.a)[:\s]*([\d]+\.[\d]+)", re.IGNORECASE)
 
 
-def extract_education(section_text: str) -> list:
+def _parse_education_structured(raw: str) -> list[dict] | None:
+    parsed = try_parse_structured(raw)
+    if parsed is None:
+        return None
+    entries = parsed if isinstance(parsed, list) else [parsed]
     results = []
-    lines = section_text.split("\n")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        degree_info = entry.get("degree") or {}
+        if isinstance(degree_info, str):
+            try:
+                degree_info = json.loads(degree_info)
+            except Exception:
+                pass
+        inst_info = entry.get("institution") or {}
+        if isinstance(inst_info, str):
+            try:
+                inst_info = json.loads(inst_info)
+            except Exception:
+                pass
+        dates = entry.get("dates") or {}
+        if isinstance(dates, str):
+            try:
+                dates = json.loads(dates)
+            except Exception:
+                pass
+        achievements = entry.get("achievements") or {}
+        if isinstance(achievements, str):
+            try:
+                achievements = json.loads(achievements)
+            except Exception:
+                pass
+
+        degree_level = ""
+        if isinstance(degree_info, dict):
+            degree_level = degree_info.get("level", "") or ""
+        else:
+            degree_level = str(degree_info)
+        degree_level = degree_level.strip()
+
+        field = ""
+        if isinstance(degree_info, dict):
+            field = degree_info.get("field", "") or ""
+        field = field.strip()
+
+        inst_name = ""
+        if isinstance(inst_info, dict):
+            inst_name = inst_info.get("name", "") or ""
+        inst_name = inst_name.strip()
+
+        grad_year = None
+        if isinstance(dates, dict):
+            grad_date = dates.get("expected_graduation") or dates.get("end") or ""
+            ym = _YEAR_RE.search(str(grad_date))
+            if ym:
+                grad_year = int(ym.group())
+        else:
+            ym = _YEAR_RE.search(str(dates))
+            if ym:
+                grad_year = int(ym.group())
+
+        gpa = None
+        if isinstance(achievements, dict):
+            gpa_val = achievements.get("gpa")
+            if gpa_val is not None and gpa_val != "":
+                try:
+                    gpa = float(gpa_val)
+                except (ValueError, TypeError):
+                    pass
+
+        results.append({
+            "degree": degree_level,
+            "institution": inst_name,
+            "year": grad_year,
+            "gpa": gpa,
+            "field": field,
+        })
+    return results
+
+
+def _parse_education_text(section_text: str) -> list[dict]:
+    results = []
+    lines = [l.strip() for l in section_text.split("\n") if l.strip()]
     doc = nlp(section_text)
-
     orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
-    years = re.findall(r"\b(19|20)\d{2}\b", section_text)
-    gpa = re.findall(r"(?:gpa|cgpa)[:\s]*([\d\.]+)", section_text, re.IGNORECASE)
+    years = _YEAR_RE.findall(section_text)
+    gpa_match = _GPA_RE.findall(section_text)
 
-    degree_found = ""
+    current_degree = ""
+    current_field = ""
     for line in lines:
-        for kw in DEGREE_KEYWORDS:
-            if kw in line.lower():
-                degree_found = line.strip()
+        line_lower = line.lower()
+        for kw, canonical in DEGREE_KEYWORDS.items():
+            if kw in line_lower:
+                current_degree = canonical
                 break
 
-    results.append(
-        {
-            "degree": degree_found,
-            "institution": orgs[0] if orgs else "",
-            "year": int(years[-1]) if years else None,
-            "gpa": float(gpa[0]) if gpa else None,
-            "field": "",  # can be enriched later
-        }
-    )
+        for fw in ["computer science", "computer engineering", "electrical",
+                    "mechanical", "civil", "chemical", "electronics",
+                    "information technology", "data science", "mathematics",
+                    "physics", "biology", "business", "commerce", "arts"]:
+            if fw in line_lower:
+                current_field = fw.title()
+                break
+
+    results.append({
+        "degree": current_degree,
+        "institution": orgs[0] if orgs else "",
+        "year": int(years[-1]) if years else None,
+        "gpa": float(gpa_match[0]) if gpa_match else None,
+        "field": current_field,
+    })
     return results
+
+
+def extract_education(section_text: str) -> list[dict]:
+    if not section_text.strip() or section_text.strip() in ("[]", "{}", "nan"):
+        return []
+
+    result = _parse_education_structured(section_text)
+    if result:
+        return result
+
+    return _parse_education_text(section_text)
