@@ -22,6 +22,7 @@ Windows Tesseract install:
     3. The module sets this path automatically — no manual config needed.
 """
 
+import os
 import re
 import logging
 import platform
@@ -47,6 +48,41 @@ def _configure_tesseract():
                 "Tesseract not found at default path. "
                 "Download from: https://github.com/UB-Mannheim/tesseract/wiki"
             )
+
+
+# ---------------------------------------------------------------------------
+# Poppler path for pdf2image (Windows only)
+# ---------------------------------------------------------------------------
+
+
+def _get_poppler_path() -> str | None:
+    """
+    Return the Poppler bin directory, or None if not found.
+
+    pdf2image calls the poppler utility pdftoppm to render PDF pages.
+    On Windows we commonly need to point it at the extracted zip.
+    """
+    if platform.system() != "Windows":
+        return None
+
+    # 1. Check environment variable
+    env_path = os.environ.get("POPPLER_PATH") or os.environ.get("POPPLER_ROOT")
+    if env_path:
+        bin_dir = Path(env_path) / "bin" if (Path(env_path) / "bin").is_dir() else Path(env_path)
+        if (bin_dir / "pdftoppm.exe").exists():
+            return str(bin_dir)
+
+    # 2. Check common locations
+    candidates = [
+        r"D:\Projects\poppler-26.02.0\Library\bin",
+        r"C:\Program Files\poppler\Library\bin",
+        r"C:\tools\poppler\Library\bin",
+    ]
+    for path in candidates:
+        if Path(path, "pdftoppm.exe").exists():
+            return path
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -126,8 +162,12 @@ def ocr_pdf(path: str, dpi: int = 300) -> str:
 
     logger.info(f"Running OCR on: {pdf_path.name} (dpi={dpi})")
 
+    poppler_path = _get_poppler_path()
     try:
-        images = convert_from_path(str(pdf_path), dpi=dpi)
+        kwargs = {"dpi": dpi}
+        if poppler_path:
+            kwargs["poppler_path"] = poppler_path
+        images = convert_from_path(str(pdf_path), **kwargs)
     except Exception as e:
         logger.error(f"pdf2image failed to convert {pdf_path.name}: {e}")
         return ""

@@ -1,6 +1,8 @@
 import re
 import logging
+from typing import Optional
 import spacy
+from src.extractor.utils import try_parse_structured
 
 logger = logging.getLogger(__name__)
 
@@ -296,7 +298,6 @@ _LOCATION_WORDS = {
 def _extract_name_from_contacts(contacts: dict) -> str:
     raw = contacts.get("personal_info", "")
     if raw and raw not in ("{}", ""):
-        from src.extractor.utils import try_parse_structured
         parsed = try_parse_structured(raw)
         if isinstance(parsed, dict):
             name = parsed.get("name", "")
@@ -405,7 +406,7 @@ def _extract_name_from_text(text: str) -> str:
     return name_candidates[0] if name_candidates else ""
 
 
-def extract_contacts(text: str, contacts: dict = {}) -> dict:
+def extract_contacts(text: str, contacts: Optional[dict] = None) -> dict:
     if contacts is None:
         contacts = {}
 

@@ -17,7 +17,7 @@ DEGREE_KEYWORDS = {
     "hsc": "HSC", "ssc": "SSC", "high school": "High School",
 }
 
-_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 _GPA_RE = re.compile(r"(?:gpa|cgpa|g\.p\.a)[:\s]*([\d]+\.[\d]+)", re.IGNORECASE)
 
 
@@ -34,25 +34,25 @@ def _parse_education_structured(raw: str) -> list[dict] | None:
         if isinstance(degree_info, str):
             try:
                 degree_info = json.loads(degree_info)
-            except Exception:
+            except json.JSONDecodeError:
                 pass
         inst_info = entry.get("institution") or {}
         if isinstance(inst_info, str):
             try:
                 inst_info = json.loads(inst_info)
-            except Exception:
+            except json.JSONDecodeError:
                 pass
         dates = entry.get("dates") or {}
         if isinstance(dates, str):
             try:
                 dates = json.loads(dates)
-            except Exception:
+            except json.JSONDecodeError:
                 pass
         achievements = entry.get("achievements") or {}
         if isinstance(achievements, str):
             try:
                 achievements = json.loads(achievements)
-            except Exception:
+            except json.JSONDecodeError:
                 pass
 
         degree_level = ""
@@ -107,33 +107,51 @@ def _parse_education_text(section_text: str) -> list[dict]:
     lines = [l.strip() for l in section_text.split("\n") if l.strip()]
     doc = nlp(section_text)
     orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
-    years = _YEAR_RE.findall(section_text)
+    all_years = _YEAR_RE.findall(section_text)
     gpa_match = _GPA_RE.findall(section_text)
 
-    current_degree = ""
-    current_field = ""
-    for line in lines:
+    line_years = [_YEAR_RE.search(l) for l in lines]
+
+    for i, line in enumerate(lines):
         line_lower = line.lower()
+        degree = ""
         for kw, canonical in DEGREE_KEYWORDS.items():
             if kw in line_lower:
-                current_degree = canonical
+                degree = canonical
                 break
+        if not degree:
+            continue
 
+        field = ""
         for fw in ["computer science", "computer engineering", "electrical",
                     "mechanical", "civil", "chemical", "electronics",
                     "information technology", "data science", "mathematics",
                     "physics", "biology", "business", "commerce", "arts"]:
             if fw in line_lower:
-                current_field = fw.title()
+                field = fw.title()
                 break
 
-    results.append({
-        "degree": current_degree,
-        "institution": orgs[0] if orgs else "",
-        "year": int(years[-1]) if years else None,
-        "gpa": float(gpa_match[0]) if gpa_match else None,
-        "field": current_field,
-    })
+        institution = ""
+        for org in orgs:
+            if org.lower() in line_lower:
+                institution = org
+                break
+
+        yr = None
+        ym = line_years[i]
+        if ym:
+            yr = int(ym.group())
+        elif all_years:
+            yr = int(all_years[-1])
+
+        results.append({
+            "degree": degree,
+            "institution": institution,
+            "year": yr,
+            "gpa": float(gpa_match[0]) if gpa_match else None,
+            "field": field,
+        })
+
     return results
 
 

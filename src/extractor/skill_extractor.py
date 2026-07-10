@@ -1,5 +1,5 @@
 # src/extractor/skill_extractor.py
-import json, spacy
+import json, os, spacy
 from spacy.matcher import PhraseMatcher
 
 nlp = spacy.load("en_core_web_sm")
@@ -10,7 +10,9 @@ def load_skills(taxonomy_path="config/skill_taxonomy.json") -> list:
     Expected structure: {"categories": {"cat1": [skill1, skill2], "cat2": [...]}}
     Returns a flattened list of all skills across all categories.
     """
-    with open(taxonomy_path) as f:
+    if not os.path.exists(taxonomy_path):
+        raise FileNotFoundError(f"Skill taxonomy not found at {taxonomy_path}. Ensure config/skill_taxonomy.json exists.")
+    with open(taxonomy_path, encoding="utf-8") as f:
         data = json.load(f)
 
     # Flatten all categories into a single list

@@ -39,7 +39,7 @@ def extract_projects(section_text: str) -> list[dict]:
             if isinstance(technologies, str):
                 try:
                     technologies = json.loads(technologies)
-                except Exception:
+                except json.JSONDecodeError:
                     technologies = [technologies]
             if not isinstance(technologies, list):
                 technologies = [str(technologies)]

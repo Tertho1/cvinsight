@@ -28,7 +28,7 @@ def compute_months(start_str: str, end_str: str) -> int:
             end = dparse(end_str)
         if end:
             return max(0, (end.year - start.year) * 12 + (end.month - start.month))
-    except Exception:
+    except (ValueError, TypeError, AttributeError):
         pass
     return 0
 
@@ -58,7 +58,7 @@ def _parse_experience_structured(raw: str) -> tuple[list[dict], float]:
         if isinstance(dates, str):
             try:
                 dates = json.loads(dates)
-            except Exception:
+            except json.JSONDecodeError:
                 dates = {}
 
         raw_start = ""
@@ -67,10 +67,7 @@ def _parse_experience_structured(raw: str) -> tuple[list[dict], float]:
             raw_start = dates.get("start") or ""
             raw_end = dates.get("end") or ""
 
-        start_year_str = ""
-        start_ym = re.search(r"\b(19|20)\d{2}\b", str(raw_start) if not isinstance(raw_start, str) else raw_start)
-        if start_ym:
-            start_year_str = start_ym.group()
+        start_date_str = str(raw_start) if not isinstance(raw_start, str) else raw_start
 
         end_clean = str(raw_end).strip() if raw_end else ""
         if end_clean.lower() in _PRESENT:
@@ -78,19 +75,19 @@ def _parse_experience_structured(raw: str) -> tuple[list[dict], float]:
 
         end_year_str = ""
         if end_clean.lower() not in _PRESENT:
-            end_ym = re.search(r"\b(19|20)\d{2}\b", end_clean)
+            end_ym = re.search(r"\b(?:19|20)\d{2}\b", end_clean)
             if end_ym:
                 end_year_str = end_ym.group()
 
         months = 0
-        if start_year_str:
-            months = compute_months(start_year_str, end_clean or "Present")
+        if start_date_str.strip():
+            months = compute_months(start_date_str, end_clean or "Present")
 
         responsibilities = entry.get("responsibilities") or []
         if isinstance(responsibilities, str):
             try:
                 responsibilities = json.loads(responsibilities)
-            except Exception:
+            except json.JSONDecodeError:
                 responsibilities = [responsibilities]
         if not isinstance(responsibilities, list):
             responsibilities = [str(responsibilities)]
@@ -100,7 +97,7 @@ def _parse_experience_structured(raw: str) -> tuple[list[dict], float]:
         if isinstance(tech_env, str):
             try:
                 tech_env = json.loads(tech_env)
-            except Exception:
+            except json.JSONDecodeError:
                 tech_env = {}
         if isinstance(tech_env, dict):
             techs = tech_env.get("technologies") or []
@@ -115,7 +112,7 @@ def _parse_experience_structured(raw: str) -> tuple[list[dict], float]:
         results.append({
             "title": title,
             "company": company,
-            "start": start_year_str or None,
+            "start": start_date_str or None,
             "end": end_year_str or (end_clean if end_clean else None),
             "duration_months": months,
             "description": desc,
@@ -127,39 +124,52 @@ def _parse_experience_structured(raw: str) -> tuple[list[dict], float]:
 
 def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
     doc = nlp(section_text)
-    company_map = {}
-    for ent in doc.ents:
-        if ent.label_ == "ORG":
-            name = ent.text.strip()
-            if name and len(name) >= 2:
-                company_map[ent.start_char] = name
-    orgs = [name for _, name in sorted(company_map.items())]
+    org_entities = [(ent.start_char, ent.text.strip()) for ent in doc.ents
+                    if ent.label_ == "ORG" and len(ent.text.strip()) >= 2]
 
+    org_index = 0
     experiences = []
     seen_starts = set()
-    matches = list(_DATE_RANGE_RE.finditer(section_text))
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", section_text) if p.strip()]
 
-    for i, m in enumerate(matches):
-        start_month, start_year, end_month, end_year_raw = m.groups()
-        start_str = f"{start_month} {start_year}" if start_month else start_year
-        end_val = end_year_raw.strip() if end_year_raw else "Present"
-        months = compute_months(start_str, end_val)
+    for para in paragraphs:
+        para_doc = nlp(para)
+        para_orgs = [ent.text.strip() for ent in para_doc.ents
+                     if ent.label_ == "ORG" and len(ent.text.strip()) >= 2]
 
-        start_key = f"{start_year}-{start_month or ''}"
-        if start_key in seen_starts:
+        matches = list(_DATE_RANGE_RE.finditer(para))
+        if not matches:
             continue
-        seen_starts.add(start_key)
 
-        experiences.append({
-            "title": "",
-            "company": orgs[i] if i < len(orgs) else "",
-            "start": start_year,
-            "end": end_val if end_val.lower() not in _PRESENT else "Present",
-            "duration_months": months,
-            "description": "",
-        })
+        for m in matches:
+            start_month, start_year, end_month, end_year_raw = m.groups()
+            start_str = f"{start_month} {start_year}" if start_month else start_year
+            end_val = end_year_raw.strip() if end_year_raw else "Present"
+            months = compute_months(start_str, end_val)
 
-    total_years = sum(e["duration_months"] for e in experiences) / 12
+            start_key = f"{start_year}-{start_month or ''}"
+            if start_key in seen_starts:
+                continue
+            seen_starts.add(start_key)
+
+            company = para_orgs[0] if para_orgs else ""
+            if not company and org_index < len(org_entities):
+                for pos, name in org_entities[org_index:]:
+                    if name in para:
+                        company = name
+                        org_index += 1
+                        break
+
+            experiences.append({
+                "title": "",
+                "company": company,
+                "start": start_year,
+                "end": end_val if end_val.lower() not in _PRESENT else "Present",
+                "duration_months": months,
+                "description": "",
+            })
+
+    total_years = sum(e["duration_months"] for e in experiences) / 12 if experiences else 0
     return experiences, round(total_years, 1)
 
 

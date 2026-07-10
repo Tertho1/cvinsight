@@ -1,5 +1,8 @@
 import hashlib
+import logging
 from src.extractor.contact_extractor import extract_contacts
+
+logger = logging.getLogger(__name__)
 from src.extractor.skill_extractor import extract_skills
 from src.extractor.education_extractor import extract_education
 from src.extractor.experience_extractor import extract_experience
@@ -97,13 +100,47 @@ def extract_all(text: str, sections: dict, file_bytes: bytes = b"") -> dict:
     skills = list(set([s.lower().strip() for s in skills if s]))
     # ------------------------------------------------------
 
-    education = extract_education(sections.get("education", ""))
-    experience, total_exp_years = extract_experience(sections.get("experience", ""))
-    projects = extract_projects(sections.get("projects", ""))
-    certs = extract_certifications(sections.get("certifications", ""))
-    languages = extract_languages(sections.get("languages", ""))
-    achievements = extract_achievements(sections.get("achievements", ""))
-    leadership = extract_leadership(sections.get("leadership", ""))
+    try:
+        education = extract_education(sections.get("education", ""))
+    except Exception as e:
+        logger.warning(f"Education extraction failed: {e}")
+        education = []
+
+    try:
+        experience, total_exp_years = extract_experience(sections.get("experience", ""))
+    except Exception as e:
+        logger.warning(f"Experience extraction failed: {e}")
+        experience, total_exp_years = [], 0.0
+
+    try:
+        projects = extract_projects(sections.get("projects", ""))
+    except Exception as e:
+        logger.warning(f"Projects extraction failed: {e}")
+        projects = []
+
+    try:
+        certs = extract_certifications(sections.get("certifications", ""))
+    except Exception as e:
+        logger.warning(f"Certifications extraction failed: {e}")
+        certs = []
+
+    try:
+        languages = extract_languages(sections.get("languages", ""))
+    except Exception as e:
+        logger.warning(f"Languages extraction failed: {e}")
+        languages = []
+
+    try:
+        achievements = extract_achievements(sections.get("achievements", ""))
+    except Exception as e:
+        logger.warning(f"Achievements extraction failed: {e}")
+        achievements = []
+
+    try:
+        leadership = extract_leadership(sections.get("leadership", ""))
+    except Exception as e:
+        logger.warning(f"Leadership extraction failed: {e}")
+        leadership = []
 
     cv_dict = {
         "cv_id": cv_id,
