@@ -58,7 +58,7 @@ def _extract_skills_from_section(skills_raw: str) -> list[str] | None:
         s = str(s)
         s = s.replace("\\/", "/")
         if s and s.lower() not in ("unknown", "not provided", ""):
-            cleaned.append(s.lower())
+            cleaned.append(s.lower().strip())
     return cleaned if cleaned else None
 
 
@@ -68,12 +68,34 @@ def extract_all(text: str, sections: dict, file_bytes: bytes = b"") -> dict:
 
     contacts = extract_contacts(text, contacts=sections)
 
+    # --- ENHANCED SKILLS EXTRACTION MULTI-SOURCE ENGINE ---
+    skills = []
+    
+    # 1. Gather explicitly structured skills from the skills column
     skills_raw = sections.get("skills", "")
     json_skills = _extract_skills_from_section(skills_raw)
     if json_skills:
-        skills = json_skills
-    else:
+        skills.extend(json_skills)
+        
+    # 2. Gather hidden skills from personal_info summary blocks
+    personal_raw = sections.get("personal_info", "")
+    if personal_raw and personal_raw.strip() not in ("", "{}"):
+        parsed_personal = try_parse_structured(personal_raw)
+        if isinstance(parsed_personal, dict):
+            summary_text = parsed_personal.get("summary", "")
+            if summary_text and summary_text.lower() not in ("unknown", "not provided", ""):
+                # Optimized modification: Reusing native extract_skills to avoid overhead
+                summary_skills = extract_skills(summary_text)
+                if summary_skills:
+                    skills.extend(summary_skills)
+                    
+    # 3. Fallback completely to raw text if no signals were caught
+    if not skills:
         skills = extract_skills(text)
+        
+    # Deduplicate and uniform formatting
+    skills = list(set([s.lower().strip() for s in skills if s]))
+    # ------------------------------------------------------
 
     education = extract_education(sections.get("education", ""))
     experience, total_exp_years = extract_experience(sections.get("experience", ""))
