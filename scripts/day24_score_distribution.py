@@ -52,7 +52,7 @@ def main():
     # Flag if distribution is degenerate (Risk Register item)
     label_counts = df["label"].value_counts(normalize=True)
     if label_counts.max() > 0.85:
-        print(f"\n⚠️  WARNING: '{label_counts.idxmax()}' is {label_counts.max():.0%} "
+        print(f"\nWARNING: '{label_counts.idxmax()}' is {label_counts.max():.0%} "
               "of all CVs. Rubric weights likely need adjustment (see Day 26).")
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))

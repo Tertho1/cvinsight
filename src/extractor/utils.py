@@ -30,6 +30,9 @@ def try_parse_structured(raw: str) -> list[dict] | dict | None:
     if isinstance(parsed, dict):
         return parsed
 
+    if isinstance(parsed, tuple):
+        parsed = list(parsed)
+
     if isinstance(parsed, list):
         result = []
         for item in parsed:
@@ -42,12 +45,13 @@ def try_parse_structured(raw: str) -> list[dict] | dict | None:
                     if isinstance(obj, dict):
                         result.append(obj)
                     elif isinstance(obj, list):
-                        result.extend(obj_inner for obj_inner in obj if isinstance(obj_inner, dict))
+                        result.extend(o for o in obj if isinstance(o, dict))
                 except (json.JSONDecodeError, TypeError):
-                    # Handle implicit concatenation: "['{a}' '{b}']" -> the two strings merged
-                    # Try extracting JSON objects with regex
                     objs = _extract_json_objects(item_stripped)
-                    result.extend(objs)
+                    if objs:
+                        result.extend(objs)
+                    else:
+                        result.append(item_stripped)
         return result
 
     return None

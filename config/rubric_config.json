@@ -5,16 +5,19 @@
     "max_points": 25,
     "description": "Work experience based on total years",
     "thresholds": [
-      {"min_years": 0, "max_years": 1, "points": 8},
-      {"min_years": 1, "max_years": 3, "points": 15},
-      {"min_years": 3, "max_years": 5, "points": 20},
-      {"min_years": 5, "max_years": null, "points": 25}
+      {"min_years": 0, "max_years": 0.5, "points": 2},
+      {"min_years": 0.5, "max_years": 1, "points": 5},
+      {"min_years": 1, "max_years": 2, "points": 9},
+      {"min_years": 2, "max_years": 4, "points": 14},
+      {"min_years": 4, "max_years": 6, "points": 18},
+      {"min_years": 6, "max_years": 8, "points": 22},
+      {"min_years": 8, "max_years": null, "points": 25}
     ]
   },
   "projects": {
     "max_points": 20,
     "description": "Points per project, max 5 projects counted",
-    "points_per_project": 4,
+    "points_per_project": 8,
     "bonus_for_github_link": 1,
     "github_bonus_points": 1,
     "max_github_bonus": 5
@@ -22,7 +25,7 @@
   "skills": {
     "max_points": 20,
     "description": "Ratio of matched skills to required skills times max_points",
-    "target_skill_count": 15
+    "target_skill_count": 10
   },
   "education": {
     "max_points": 15,
@@ -58,15 +61,15 @@
     "points_per_role": 2
   },
   "label_thresholds": {
-    "strong_min": 80,
+    "strong_min": 72,
     "strong_max": 100,
     "average_min": 50,
-    "average_max": 79,
+    "average_max": 71,
     "weak_min": 0,
     "weak_max": 49
   },
   "borderline_bands": {
-    "lower": [45, 55],
-    "upper": [75, 85]
+    "lower": [45, 51],
+    "upper": [68, 74]
   }
 }

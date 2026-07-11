@@ -29,11 +29,11 @@ cvinsight/
 ├── scripts/              # Utility scripts (dataset loading, debugging)
 ├── src/                  # All source code
 │   ├── parser/           # PDF/DOCX/TXT/OCR parsing (✅ done)
-│   ├── extractor/        # NER + rule-based extraction (✅ ~90% done)
-│   ├── scorer/           # Rubric scoring engine (❌ not started)
+│   ├── extractor/        # NER + rule-based extraction (✅ ~90% done, 6 bugs to fix)
+│   ├── scorer/           # Rubric scoring engine (✅ done)
 │   ├── matcher/          # JD similarity & ranking (❌ not started)
-│   └── suggester/        # Suggestion generation (❌ not started)
-├── tests/                # 285 unit tests (14 files, all passing)
+│   └── suggester/        # Suggestion generation (✅ done)
+├── tests/                # 336 unit tests (16 files, all passing)
 ├── AGENTS.md             # This file
 ├── TODO.md               # Current task tracking
 ├── progress.md           # Weekly progress report
@@ -59,8 +59,8 @@ Pydantic model with nested models (Education, Experience, Project, Certification
 ### Testing
 - Framework: **pytest** (plain asserts, no unittest.TestCase)
 - Run all: `pytest tests/`
-- 285 tests across 14 files
-- No tests yet for scorer/suggester/matcher (modules not built)
+- 336 tests across 16 files
+- Scorer (44 tests) + suggester (7 tests) — both have tests
 
 ### Python
 - Version: 3.14 (project plan says 3.10 but env is 3.14)
@@ -71,23 +71,33 @@ Pydantic model with nested models (Education, Experience, Project, Certification
 
 ## Build Order (DO NOT DEVIATE)
 
-1. **Week 4 — Scoring Engine** (critical dependency)
-   - `src/scorer/section_scorers.py` — 7 section scoring functions
-   - `src/scorer/scorer.py` with `score_cv()` — master scorer
-   - `src/scorer/feature_builder.py` — feature vectors for classifiers
-   - `src/suggester/suggester.py` — `generate_suggestions()`
-   - Output: `labeled_cvs.csv`, `borderline_review.csv`
+0. **Phase 1 — Extractor Bug Fixes** (prerequisite for batch scoring)
+   - Fix `try_parse_structured` tuple + string-item handling
+   - Extract languages from `skills.languages` sub-key
+   - Add NETSOL key fallbacks (`title`→`name`, `degree_title`→`degree.level`)
+   - Add "till date" to experience date regex
+   - Run batch scoring → `labeled_cvs.csv`, `borderline_review.csv`
 
-2. **Week 5 — Classifier + Streamlit V1**
+1. **Phase 2 — Dataset Normalization Adapters** (additive, no existing code changes)
+   - `src/extractor/adapters.py` — one adapter per dataset
+   - Unlocks extraction on NETSOL, NER, ATS, classification datasets
+
+2. **Phase 3 — Text-Path Rewrites** (before V1 production deploy)
+   - Experience: title, description, flexible dates
+   - Education: multi-line paragraph parsing
+   - Projects: tool extraction from description
+   - Languages: language-name detection
+
+3. **Week 5 — Classifier + Streamlit V1**
    - Train Logistic Regression + XGBoost
    - `app/app.py` — Streamlit UI: upload → score → display
    - Deploy to Hugging Face Spaces
 
-3. **Week 6 — JD Matching & Ranking (V2)**
+4. **Week 6 — JD Matching & Ranking (V2)**
    - `src/matcher/embedder.py`, `semantic_scorer.py`, `skill_overlap.py`, `ranker.py`
    - Add ranking tab to Streamlit
 
-4. **Week 7 — Fine-Tuning & Final Report (stretch)**
+5. **Week 7 — Fine-Tuning & Final Report (stretch)**
    - Fine-tune NER, retrain classifier, evaluation report
 
 ---

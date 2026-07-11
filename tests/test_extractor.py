@@ -151,6 +151,14 @@ class TestExtractAll:
         assert result["jd_match"]["final_match_score"] == 0.0
         assert result["jd_match"]["missing_skills"] == []
 
+    def test_languages_fallback_from_skills_section(self):
+        sections = self.make_sections({"languages": "", "skills": '{"languages": [{"name": "English"}, {"name": "Spanish"}]}'})
+        result = extract_all("test cv text", sections)
+        assert len(result["languages"]) >= 2
+        lang_names = [l["language"].lower() for l in result["languages"]]
+        assert "english" in lang_names
+        assert "spanish" in lang_names
+
     def test_skills_deduplicated(self):
         sections = self.make_sections({
             "skills": '{"technical": {"languages": [{"name": "Python"}, {"name": "Python"}, {"name": "SQL"}]}}',

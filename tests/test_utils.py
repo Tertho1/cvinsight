@@ -68,9 +68,10 @@ class TestTryParseStructured:
         raw = '[{"name": "Project A"}, "just a string", {"name": "Project B"}]'
         result = try_parse_structured(raw)
         assert isinstance(result, list)
-        assert len(result) == 2
+        assert len(result) == 3
         assert result[0]["name"] == "Project A"
-        assert result[1]["name"] == "Project B"
+        assert result[2]["name"] == "Project B"
+        assert result[1] == "just a string"
 
     def test_invalid_json_fallback(self):
         raw = "not valid json or python"
@@ -97,6 +98,20 @@ class TestTryParseStructured:
         assert len(objs) == 2
         assert objs[0] == {"a": 1}
         assert objs[1] == {"b": 2}
+
+    def test_tuple_of_dicts(self):
+        raw = "({'name': 'AWS'}, {'name': 'Docker'})"
+        result = try_parse_structured(raw)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0]["name"] == "AWS"
+
+    def test_list_of_plain_strings(self):
+        raw = "['Achievement 1', 'Achievement 2']"
+        result = try_parse_structured(raw)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0] == "Achievement 1"
 
     def test_parse_json_field_aliases(self):
         assert parse_json_field(None) is None

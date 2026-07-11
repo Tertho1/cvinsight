@@ -1,6 +1,7 @@
 import json
 import re
 from src.extractor.utils import try_parse_structured
+from src.extractor.skill_extractor import extract_skills
 
 CERT_KEYWORDS = [
     "certified", "certificate", "certification", "aws", "google cloud",
@@ -14,6 +15,20 @@ LANG_PROFICIENCY = [
     "a1", "a2", "b1", "b2", "c1", "c2",
 ]
 
+_KNOWN_LANGUAGES = [
+    "english", "spanish", "french", "german", "chinese", "mandarin",
+    "japanese", "korean", "arabic", "russian", "portuguese", "italian",
+    "dutch", "bengali", "hindi", "urdu", "punjabi", "tamil", "telugu",
+    "marathi", "gujarati", "persian", "turkish", "vietnamese", "thai",
+    "polish", "ukrainian", "romanian", "czech", "greek", "hungarian",
+    "swedish", "danish", "norwegian", "finnish", "hebrew", "indonesian",
+    "malay", "tagalog", "swahili", "burmese", "khmer", "nepali", "sinhala",
+]
+
+_LANG_PAREN_RE = re.compile(
+    r"([A-Za-z]+(?:\s+[A-Za-z]+)*)\s*[\(\[,]\s*([A-Za-z0-9+/]+)\s*[\)\]]"
+)
+
 GITHUB_PATTERN = re.compile(r"github\.com/[\w-]+/[\w-]+", re.IGNORECASE)
 _YEAR_RE = re.compile(r"\b(20\d{2})\b")
 
@@ -26,7 +41,7 @@ def extract_projects(section_text: str) -> list[dict]:
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
-            name = entry.get("name", "")
+            name = entry.get("name") or entry.get("title") or ""
             if isinstance(name, list):
                 name = " ".join(str(x) for x in name)
             if not isinstance(name, str):
@@ -73,10 +88,14 @@ def extract_projects(section_text: str) -> list[dict]:
             continue
         lines = block.split("\n")
         github_links = GITHUB_PATTERN.findall(block)
+        name = lines[0].strip()
+        desc = " ".join(lines[1:]).strip()
+        # Extract tools from description using the skill extractor
+        tools = extract_skills(desc) if desc else []
         projects.append({
-            "name": lines[0].strip(),
-            "tools": [],
-            "description": " ".join(lines[1:]).strip(),
+            "name": name,
+            "tools": tools,
+            "description": desc,
             "link": github_links[0] if github_links else None,
         })
     return projects
@@ -169,8 +188,33 @@ def extract_languages(section_text: str) -> list[dict]:
         line = line.strip()
         if not line:
             continue
-        proficiency = next((p for p in LANG_PROFICIENCY if p in line.lower()), None)
-        langs.append({"language": line, "proficiency": proficiency})
+        lower = line.lower()
+        # Try "Language (Proficiency)" format first
+        paren_match = _LANG_PAREN_RE.search(line)
+        if paren_match:
+            lang_name = paren_match.group(1).strip()
+            prof = paren_match.group(2).strip()
+            langs.append({"language": lang_name, "proficiency": prof})
+            continue
+        # Try comma-separated "Language, Proficiency"
+        if "," in line:
+            parts = [p.strip() for p in line.split(",", 1)]
+            if parts[0].lower() in _KNOWN_LANGUAGES:
+                langs.append({"language": parts[0], "proficiency": parts[1] if len(parts) > 1 else None})
+                continue
+        # Check if line contains a known language name
+        found_lang = None
+        for known in _KNOWN_LANGUAGES:
+            if known in lower:
+                found_lang = known.title()
+                break
+        if found_lang:
+            prof = next((p for p in LANG_PROFICIENCY if p in lower), None)
+            langs.append({"language": found_lang, "proficiency": prof})
+        else:
+            # Fallback: use full line as language name
+            proficiency = next((p for p in LANG_PROFICIENCY if p in lower), None)
+            langs.append({"language": line, "proficiency": proficiency})
     return langs
 
 

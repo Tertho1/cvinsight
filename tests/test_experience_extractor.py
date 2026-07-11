@@ -112,18 +112,35 @@ class TestExperienceTextPath:
         text = "Software Engineer, Google\nJan 2020 - Dec 2022"
         result, years = extract_experience(text)
         assert len(result) >= 1
-        assert result[0]["title"] == ""
+        assert result[0]["title"] == "Software Engineer"
+        assert result[0]["company"] == "Google"
 
     def test_present_date_range(self):
         text = "Data Scientist, OpenAI\nJan 2022 - Present"
         result, years = extract_experience(text)
         assert len(result) >= 1
         assert result[0]["end"] == "Present"
+        assert result[0]["title"] == "Data Scientist"
 
     def test_company_extracted(self):
         text = "Senior Dev, Microsoft\nJan 2021 - Present"
         result, years = extract_experience(text)
         assert len(result) >= 1
+        assert result[0]["title"] == "Senior Dev"
+        assert result[0]["company"] == "Microsoft"
+
+    def test_till_date_in_structured_dates(self):
+        raw = '[{"title": "Engineer", "company": "Co", "dates": {"start": "2020-01", "end": "Till Date"}}]'
+        result, years = extract_experience(raw)
+        assert len(result) == 1
+        assert result[0]["end"] == "Present"
+        assert result[0]["duration_months"] > 0
+
+    def test_till_date_in_text_path(self):
+        text = "Software Engineer, Co\nJan 2020 - Till Date"
+        result, years = extract_experience(text)
+        assert len(result) >= 1
+        assert result[0]["end"] == "Present"
 
     def test_structured_path_preferred_over_text(self):
         raw = '[{"title": "Engineer", "company": "Real Co", "dates": {"start": "2020-01", "end": "2022-01"}}]'

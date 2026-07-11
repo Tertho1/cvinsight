@@ -130,6 +130,22 @@ def extract_all(text: str, sections: dict, file_bytes: bytes = b"") -> dict:
         logger.warning(f"Languages extraction failed: {e}")
         languages = []
 
+    if not languages:
+        skills_raw = sections.get("skills", "")
+        parsed_skills = try_parse_structured(skills_raw)
+        if isinstance(parsed_skills, dict):
+            lang_list = parsed_skills.get("languages")
+            if isinstance(lang_list, list):
+                for item in lang_list:
+                    if isinstance(item, dict):
+                        name = (item.get("name") or item.get("language") or "").strip()
+                        if name:
+                            languages.append({"language": name, "proficiency": None})
+                    elif isinstance(item, str):
+                        item = item.strip()
+                        if item:
+                            languages.append({"language": item, "proficiency": None})
+
     try:
         achievements = extract_achievements(sections.get("achievements", ""))
     except Exception as e:

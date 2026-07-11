@@ -10,11 +10,31 @@ nlp = spacy.load("en_core_web_sm")
 _DATE_RANGE_RE = re.compile(
     r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[.,]?\s+(\d{4})"
     r"\s*[-–to]+\s*"
-    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[.,]?\s+)?(\d{4}|Present|Current)",
+    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[.,]?\s+)?(\d{4}|Present|Current|Till Date)",
     re.IGNORECASE
 )
 
-_PRESENT = {"present", "current"}
+_YYYY_RANGE_RE = re.compile(
+    r"(\d{4})\s*[-–to]+\s*(\d{4}|Present|Current|Till Date)",
+    re.IGNORECASE
+)
+
+_MMYYYY_RANGE_RE = re.compile(
+    r"(\d{1,2})/(\d{4})\s*[-–to]+\s*(\d{1,2})?/?(\d{4}|Present|Current|Till Date)",
+    re.IGNORECASE
+)
+
+_YYYYMM_RANGE_RE = re.compile(
+    r"(\d{4})-(\d{2})\s*[-–to]+\s*(\d{4})-(\d{2})",
+    re.IGNORECASE
+)
+
+_TITLE_COMPANY_RE = re.compile(
+    r"^(.*?)\s+(?:at|@|–|—|-)\s+(.*)$",
+    re.IGNORECASE
+)
+
+_PRESENT = {"present", "current", "till date"}
 
 
 def compute_months(start_str: str, end_str: str) -> int:
@@ -122,52 +142,117 @@ def _parse_experience_structured(raw: str) -> tuple[list[dict], float]:
     return results, round(total_years, 1)
 
 
+def _find_date_range(text: str) -> list[tuple]:
+    """Try all date regex patterns and return list of (start, end, match_end_pos, match_start_pos)."""
+    results = []
+    for m in _DATE_RANGE_RE.finditer(text):
+        start_month, start_year, end_month, end_year_raw = m.groups()
+        start_str = f"{start_month} {start_year}" if start_month else start_year
+        end_val = end_year_raw.strip() if end_year_raw else "Present"
+        results.append((start_str, end_val, m.end(), m.start()))
+    for m in _YYYY_RANGE_RE.finditer(text):
+        start_str, end_val = m.groups()
+        results.append((start_str, end_val, m.end(), m.start()))
+    for m in _MMYYYY_RANGE_RE.finditer(text):
+        sm, sy, em, ey = m.groups()
+        start_str = f"{sy}-{sm}"
+        end_val = ey.strip() if ey else "Present"
+        if em:
+            end_val = f"{ey}-{em}" if ey.lower() not in _PRESENT else ey
+        results.append((start_str, end_val, m.end(), m.start()))
+    for m in _YYYYMM_RANGE_RE.finditer(text):
+        sy, sm, ey, em = m.groups()
+        start_str = f"{sy}-{sm}"
+        end_val = f"{ey}-{em}"
+        results.append((start_str, end_val, m.end(), m.start()))
+    return results
+
+
+def _parse_title_company(leading_text: str) -> tuple[str, str]:
+    """Parse 'Title at Company' or 'Title, Company' or 'Title - Company' patterns."""
+    leading = leading_text.strip().strip(".,:;")
+    if not leading:
+        return "", ""
+    m = _TITLE_COMPANY_RE.match(leading)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+    # Split on comma or pipe, but only the first separator
+    sep_match = re.search(r"\s*[,|]\s*", leading)
+    if sep_match:
+        title = leading[:sep_match.start()].strip()
+        company = leading[sep_match.end():].strip()
+        # Company should only be the first line/word group, not include dates
+        company = company.split("\n")[0].strip()
+        if title and company:
+            return title, company
+    return leading, ""
+
+
 def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
     doc = nlp(section_text)
-    org_entities = [(ent.start_char, ent.text.strip()) for ent in doc.ents
-                    if ent.label_ == "ORG" and len(ent.text.strip()) >= 2]
+    org_entities = {ent.text.strip() for ent in doc.ents
+                    if ent.label_ == "ORG" and len(ent.text.strip()) >= 2}
 
-    org_index = 0
     experiences = []
     seen_starts = set()
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", section_text) if p.strip()]
 
     for para in paragraphs:
-        para_doc = nlp(para)
-        para_orgs = [ent.text.strip() for ent in para_doc.ents
-                     if ent.label_ == "ORG" and len(ent.text.strip()) >= 2]
-
-        matches = list(_DATE_RANGE_RE.finditer(para))
-        if not matches:
+        dates = _find_date_range(para)
+        if not dates:
             continue
 
-        for m in matches:
-            start_month, start_year, end_month, end_year_raw = m.groups()
-            start_str = f"{start_month} {start_year}" if start_month else start_year
-            end_val = end_year_raw.strip() if end_year_raw else "Present"
-            months = compute_months(start_str, end_val)
+        # Find the earliest date match position (use match_start_pos for accuracy)
+        dates.sort(key=lambda x: x[3])
+        start_str, end_val, match_end, match_start = dates[0]
 
-            start_key = f"{start_year}-{start_month or ''}"
-            if start_key in seen_starts:
-                continue
-            seen_starts.add(start_key)
+        start_key = start_str
+        if start_key in seen_starts:
+            continue
+        seen_starts.add(start_key)
 
-            company = para_orgs[0] if para_orgs else ""
-            if not company and org_index < len(org_entities):
-                for pos, name in org_entities[org_index:]:
-                    if name in para:
-                        company = name
-                        org_index += 1
-                        break
+        months = compute_months(start_str, end_val)
 
-            experiences.append({
-                "title": "",
-                "company": company,
-                "start": start_year,
-                "end": end_val if end_val.lower() not in _PRESENT else "Present",
-                "duration_months": months,
-                "description": "",
-            })
+        # Text before the date match is candidate for title/company
+        leading = para[:match_start].strip().strip(",\n\t ")
+        # Use only the last line before the date (first line usually has title+company)
+        leading_lines = [l.strip() for l in leading.split("\n") if l.strip()]
+        if leading_lines:
+            leading = leading_lines[-1]
+        title, company = _parse_title_company(leading)
+        # Clean company name: strip trailing non-alpha chars, newlines, date fragments
+        company = company.rstrip(" ,;/-")
+
+        # Fallback: use ORG entities from paragraph
+        if not company:
+            para_doc = nlp(para)
+            para_orgs = {ent.text.strip() for ent in para_doc.ents
+                         if ent.label_ == "ORG" and len(ent.text.strip()) >= 2}
+            for org in sorted(para_orgs, key=len, reverse=True):
+                if org in para:
+                    company = org
+                    break
+
+        # Description: text after the date range
+        description = para[match_end:].strip().strip(",\n\t ")
+        # Also capture text between date components if any
+        if not description:
+            lines = [l.strip() for l in para.split("\n") if l.strip()]
+            desc_lines = [l for l in lines if l.lower() not in ("", "nan") and l != leading.strip()]
+            description = " ".join(desc_lines)
+
+        experience_end = end_val
+        if end_val.lower() in _PRESENT:
+            experience_end = "Present"
+
+        experiences.append({
+            "title": title,
+            "company": company,
+            "start": start_str,
+            "end": experience_end,
+            "duration_months": months,
+            "description": description,
+        })
 
     total_years = sum(e["duration_months"] for e in experiences) / 12 if experiences else 0
     return experiences, round(total_years, 1)

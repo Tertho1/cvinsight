@@ -22,6 +22,12 @@ class TestExtractProjectsStructured:
         assert result[0]["name"] == "CVInsight"
         assert "Python" in result[0]["tools"]
 
+    def test_title_fallback_for_name(self):
+        raw = '[{"title": "NETSOL Project", "technologies": ["Java"]}]'
+        result = extract_projects(raw)
+        assert len(result) == 1
+        assert result[0]["name"] == "NETSOL Project"
+
     def test_multiple_projects(self):
         raw = '[{"name": "Project A"}, {"name": "Project B"}]'
         result = extract_projects(raw)

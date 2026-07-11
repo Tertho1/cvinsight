@@ -1,9 +1,9 @@
 # CV Evaluator & Ranking System — Progress Report
 
 **Generated:** July 11, 2026  
-**Git:** `b3bff3a` (1 commit ahead of v0.2, no v1.0 tag yet)  
+**Git:** `d519cda` (Week 4 scoring engine + config fix + dataset rename)  
 **Python:** 3.14.3  
-**Overall Completion:** ~64%
+**Overall Completion:** ~72%
 
 ---
 
@@ -43,6 +43,14 @@
 - **285 unit tests** (14 test files) — all passing
 - **3000 CVs extracted** to `data/processed/extracted_cvs.json`
 
+**⚠️ Correction — Languages ARE in datasetmaster (inside skills column)**
+
+The datasetmaster `skills` column has a `"languages"` sub-key with entries like:
+```python
+{"technical": {...}, "languages": [{"name":"English","level":"native"}, ...]}
+```
+99.8% of rows have languages here. The 0% coverage is a **pipeline bug**: `extract_all()` calls `extract_languages(sections.get("languages", ""))` but there's no separate `languages` column, so it always gets empty string. Meanwhile `_extract_skills_from_section()` puts these language names into the **skills list** instead. Languages field stays empty despite rich data existing.
+
 **Extraction quality (3000 CVs from datasetmaster/resumes):**
 
 | Field          | Coverage | Notes |
@@ -52,16 +60,16 @@
 | Phone          | 94.1%    | Real phone numbers extracted |
 | Education      | 99.9%    | Real degrees, institutions, years |
 | Experience     | 100.0%   | Real titles & companies, duration months computed |
-| Skills         | 99.8%    | Clean lists, no artifacts |
+| Skills         | 99.8%    | Clean lists, but includes language names (bug) |
 | Projects       | 99.2%    | Real project names, tools, descriptions |
-| Certifications | 0.1%     | Minimal data in this dataset |
-| Languages      | 0.0%     | Not stored in this dataset |
+| Certifications | 0.1%     | Comma-separated JSON objects parse as tuples → lost |
+| Languages      | 0.0%     | **Bug:** stuck inside skills column, pipeline never reads them |
 
 ---
 
 ## 2. What's Missing (Not Started)
 
-### Week 4 — Scoring Engine & Label Generation ✅ (~80%)
+### Week 4 — Scoring Engine & Label Generation ✅ (~95%)
 - `src/scorer/section_scorers.py` — 7 section scoring functions, reads weights from `rubric_config.json`
 - `src/scorer/scorer.py` — `score_cv()` master scorer with `score_cvs()` batch mode + `reload_config()`
 - `src/scorer/feature_builder.py` — `build_features(cv_schema) → np.array` with 12 numeric features
@@ -70,7 +78,12 @@
 - **51 unit tests** (test_scorer.py + test_suggester.py) — all passing
 - **Pipeline verified end-to-end**: extract_all → score_cv → generate_suggestions (day28 script)
 - `scripts/clean_datasets.py` & 8 scripts — fixed `structured_resumes_clean.csv` → `datasetmaster_clean.csv`
-- **Remaining:** Run scorer on 4500 CVs → `labeled_cvs.csv`, inspect distribution, flag borderline CVs
+- **Phase 1 bug fixes ✅** — all 6 extractor bugs verified fixed (tuple handling, plain string items, languages routing, NETSOL key fallbacks, "Till Date" support)
+- **Batch scoring completed** — 4500 CVs scored → `labeled_cvs.csv` + `score_distribution.png` generated
+- **Borderline CVs flagged** — 1382 CVs in `borderline_review.csv` (bands 45-51, 68-74)
+- **Rubric weights adjusted** — experience bands expanded (7 tiers), projects 8pts/project, skills target=10, label thresholds: Strong 72+
+- **Distribution now:** Strong 24.6%, Average 73.7%, Weak 1.7% (mean 66.3, std 7.4)
+- **Remaining:** Manual review of 50 borderline CVs (Day 26), then proceed to Phase 2
 
 ### Week 5 — Classifier Training & Streamlit V1 ❌ (0%)
 - `models/lr_baseline.pkl` — Logistic Regression baseline (Week 5)
@@ -97,31 +110,54 @@
 
 ## 3. Issues & Areas for Improvement
 
-### Extraction Quality
+### Extraction Quality — datasetmaster only
 
 | Issue | Severity | Recommendation |
 |-------|----------|----------------|
-| Certifications/languages have 0% coverage | **Data issue** | The `datasetmaster/resumes` dataset doesn't store these fields. Test on `ner_resumes_clean.csv` or `classification_clean.csv` which may have richer content. |
+| Languages stuck inside skills column | **High** | `extract_all()` must extract `skills.languages` sub-key and route to languages field |
+| Certifications in tuple format | **Medium** | Comma-separated JSON `{...},{...}` parses as tuple; `try_parse_structured` doesn't handle tuples |
 | Education year parsing | **Minor** | Some years appear as "20" instead of "2020". Structured parser handles correctly; text fallback still has edge cases. |
 | SyntaxWarning `"\/"` in test | **Low** | Pre-existing warning in `test_extractor.py`, does not affect functionality. |
 
-### Code Quality
+### Cross-Dataset Extractor Compatibility (5 datasets analyzed)
 
-| Issue | Severity | Recommendation |
-|-------|----------|----------------|
-| No scorer/suggester/matcher unit tests | **High** | Scoring, suggestion, and matching modules aren't written yet. Tests will be needed once implemented. |
-| Extractor quality metrics not validated on ground truth | **Medium** | Coverage metrics are computed from the same structured data the extractor reads. Need manual ground-truth comparison on plain-text CVs. |
-| Python 3.14 compatibility | **Low** | Project plan specifies 3.10 but env is 3.14. All packages work, but some API changes may exist. |
+The extractors were designed primarily for datasetmaster's format. Analysis of all 5 datasets revealed:
+
+| Dataset | Skills | Education | Experience | Projects | Certs | Languages | Verdict |
+|---------|--------|-----------|------------|----------|-------|-----------|---------|
+| **datasetmaster_raw** (structured cols) | ✅ works | ✅ works | ✅ works | ✅ works | ⚠️ tuple format | ❌ stuck in skills col | **Pipeline fix needed** |
+| **datasetmaster_clean** (text col) | ❌ garbage | ❌ garbage | ❌ garbage | ❌ garbage | ❌ | ❌ | Text col is raw JSON/Python repr, not natural language |
+| **ats_scores** | ✅ OK | ⚠️ partial | ❌ no newlines | ⚠️ partial | ⚠️ | ❌ | Skills OK, rest broken |
+| **classification** | ✅ OK | ⚠️ partial | ❌ no date ranges | ⚠️ partial | ⚠️ | ❌ noisy | Skills OK, rest limited |
+| **ner_resumes** | ✅ OK | ✅ OK | ❌ date "Till Date" | ⚠️ partial | ⚠️ | ❌ catastrophically noisy | Skills/education OK |
+| **netsol** | ✅ JSON array | ❌ key mismatch | N/A empty | ❌ `title` vs `name` | N/A | ❌ | Silent data loss on 3 fields |
+
+### Critical Bugs Found
+
+| # | Bug | Affected | Impact |
+|---|-----|----------|--------|
+| 1 | `try_parse_structured` ignores tuples | datasetmaster certifications | 9 CVs' certs silently lost |
+| 2 | `try_parse_structured` drops plain string items in lists | NETSOL achievements | All achievements silently lost |
+| 3 | Languages extracted from `skills.languages` but put in skills list | All datasetmaster CVs | 99.8% of CVs have 0 languages despite data existing |
+| 4 | NETSOL uses `title` not `name` for projects | NETSOL projects | All projects silently lost |
+| 5 | NETSOL uses `degree_title`/`university` not `degree.level`/`institution.name` | NETSOL education | All education silently lost |
+| 6 | `_DATE_RANGE_RE` doesn't match "Till Date" | ner_resumes experience | Experience extraction fails on this dataset |
+| 7 | Text-based fallbacks assume newlines exist | ATS, classification, ner_resumes | Experience/languages/projects extractors break |
+| 8 | `datasetmaster_clean` text column is raw JSON/Python repr | datasetmaster_clean | All extractors produce garbage on text column |
 
 ### Architecture Recommendations
 
-1. **Build the scoring engine next** — Scoring is the critical dependency for Weeks 4-7. The scorer reads `rubric_config.json` and populates `section_scores`, `total_score`, and `label`. Without it, the classifier, suggester, and app all stall.
+1. **Fix language pipeline first** — Languages exist in `skills.languages` sub-key, just need proper routing in `extract_all()`.
 
-2. **Test on plain-text CVs** — All current testing uses the `datasetmaster/resumes` (JSON-structured) dataset. The extractors also support plain-text parsing via section_splitter → text-based extraction, but this path hasn't been tested. Run on `ner_resumes_clean.csv` (which has real plain-text CVs) to validate.
+2. **Make extractors resilient to key name variations** — NETSOL uses different keys (`title` vs `name`, `degree_title` vs `degree.level`). Add fallback key lookups.
 
-3. **Streamlit app should be minimal V1 first** — Start with: file upload → call pipeline → display score + label + suggestions. No JD matching, no ranking, no multi-CV upload. Get the core loop working end-to-end.
+3. **Handle tuples in `try_parse_structured`** — Add `isinstance(parsed, tuple)` → convert to list.
 
-4. **Explore the noran-mohamed dataset** — For certifications/languages, the classification dataset may have richer semi-structured data that the extractor can handle.
+4. **Handle plain string items in lists** — Keep non-JSON-object strings as-is instead of dropping them.
+
+5. **Add "till date" to experience date regex** — Minor fix for ner_resumes compatibility.
+
+6. **Dataset schedule:** For now, only `datasetmaster_raw` (structured columns) is fully production-ready. Other datasets need extractor fixes before they can be used at scale.
 
 ---
 
@@ -146,11 +182,19 @@ streamlit run app/app.py
 |------|------|--------|--------|-------------|
 | W1 | Foundation & datasets | ✅ 100% | 15% | 15% |
 | W2 | Parser (PDF/DOCX/TXT/OCR) | ✅ 100% | 15% | 15% |
-| W3 | NER extraction | ✅ ~90% | 20% | ~18% |
-| W4 | Scoring engine | ✅ ~80% | 20% | ~16% |
+| W3 | NER extraction | ✅ ~95% | 20% | ~19% |
+| W4 | Scoring engine + Phase 1b | ✅ ~95% | 20% | ~19% |
+| P2 | Dataset adapters (cross-dataset) | ✅ 100% | — | +8% |
 | W5 | Classifier + Streamlit V1 | ❌ 0% | 15% | 0% |
 | W6 | JD matching & ranking | ❌ 0% | 10% | 0% |
 | W7 | Fine-tuning & final report | ❌ 0% | 5% | 0% |
-| **Total** | | | **100%** | **~64%** |
+| P3 | Text-path rewrites | ✅ 100% | — | +5% |
+| **Total** | | | **100%** | **~77%** |
 
-**Next milestone:** Run scorer on all 4500 CVs → `labeled_cvs.csv`, inspect distribution, flag borderline CVs (Day 24-25). Then move to Week 5 — Classifier training & Streamlit V1.
+**Execution progress (3-phase plan):**
+
+1. **Phase 1** — ✅ Fix 6 extractor bugs (already applied before this session) → batch-score 4500 CVs → `labeled_cvs.csv` → `borderline_review.csv` → rubric weights adjusted (24.6% Strong, 73.7% Average, 1.7% Weak)
+2. **Phase 2** — ✅ Create `src/extractor/adapters.py` with 4 adapters (netsol, ner, ats, classification) + `scripts/batch_extract_all.py` for incremental batch extraction
+3. **Phase 3** — ✅ Rewrite text-path extractors: experience (title + description + YYYY-YYYY/MM/YYYY dates), education (paragraph-level + cross-line association), projects (tools from description via skill_extractor), languages (name detection + `Language (Proficiency)` parsing)
+
+**Next: Week 5 — Classifier Training & Streamlit V1**

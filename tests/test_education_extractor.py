@@ -61,6 +61,13 @@ class TestEducationStructuredPath:
     def test_empty_dict_returns_empty(self):
         assert extract_education("{}") == []
 
+    def test_netsol_degree_title_field(self):
+        raw = '[{"degree_title": "B.Sc", "university": "ABC University"}]'
+        result = extract_education(raw)
+        assert len(result) == 1
+        assert result[0]["degree"] == "B.Sc"
+        assert result[0]["institution"] == "ABC University"
+
 
 class TestEducationTextPath:
 
