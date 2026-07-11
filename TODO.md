@@ -1,12 +1,12 @@
 # TODO — CV Evaluator & Ranking System
 
-Last updated: 2026-07-11 | Git: `d519cda` (v0.3) | Tests: 343 passing | Phase 3 complete
+Last updated: 2026-07-11 | Git: `11bca6e` (v0.4) | Tests: 343 passing | Phase 3 complete
 
 ---
 
 ## Current Priority
 
-**Week 5: Classifier Training & Streamlit V1** — Train Logistic Regression + XGBoost on `labeled_cvs.csv`, build Streamlit web app, deploy to Hugging Face Spaces.
+**EDA & Extraction Analysis** — Apply detailed EDA on all 5 datasets to understand structure/quality, run extraction through all adapters, inspect results, and refine before proceeding to Week 5.
 
 ---
 

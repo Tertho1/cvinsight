@@ -18,22 +18,24 @@ cvinsight/
 │   └── skill_taxonomy.json   # ~270 skills in 8 categories
 ├── data/
 │   ├── raw/              # Original downloaded datasets (do not edit)
-│   └── processed/        # Cleaned CSVs + extracted_cvs.json (3000 CVs)
+│   └── processed/        # Cleaned CSVs + extracted_cvs.json (4500 CVs)
 ├── demo/                 # Sample CVs for demo (not yet populated)
 ├── models/               # Trained .pkl files (not yet built)
 ├── notebooks/            # Jupyter notebooks for EDA & eval
 │   ├── day3_eda.ipynb
 │   ├── week1_summary.ipynb
 │   ├── week2_summary.ipynb
-│   └── week3_extraction_eval.ipynb
-├── scripts/              # Utility scripts (dataset loading, debugging)
+│   ├── week3_extraction_eval.ipynb
+│   └── eda_extraction_all_datasets.ipynb  # Comprehensive EDA + extraction eval
+├── scripts/              # Utility scripts (dataset loading, debugging, batch extraction, analysis)
 ├── src/                  # All source code
 │   ├── parser/           # PDF/DOCX/TXT/OCR parsing (✅ done)
-│   ├── extractor/        # NER + rule-based extraction (✅ ~90% done, 6 bugs to fix)
+│   ├── extractor/        # NER + rule-based extraction (✅ ~95%, bugs fixed in Phase 1)
+│   │   └── adapters.py   # Dataset normalization adapters (Phase 2)
 │   ├── scorer/           # Rubric scoring engine (✅ done)
 │   ├── matcher/          # JD similarity & ranking (❌ not started)
 │   └── suggester/        # Suggestion generation (✅ done)
-├── tests/                # 336 unit tests (16 files, all passing)
+├── tests/                # 343 unit tests (16 files, all passing)
 ├── AGENTS.md             # This file
 ├── TODO.md               # Current task tracking
 ├── progress.md           # Weekly progress report
@@ -51,6 +53,9 @@ CV file → parser.py → raw text → section_splitter.py → sections dict
        → extract_all() → CVSchema (Pydantic) → scorer → score + label
        → suggester → suggestions
        Optional: + JD → matcher → rank_cvs() → ranked list
+
+Structured CSV path:
+  CSV → adapters.py → sections dict → extract_all() → CVSchema
 ```
 
 ### CVSchema (src/schema.py)
@@ -59,8 +64,7 @@ Pydantic model with nested models (Education, Experience, Project, Certification
 ### Testing
 - Framework: **pytest** (plain asserts, no unittest.TestCase)
 - Run all: `pytest tests/`
-- 336 tests across 16 files
-- Scorer (44 tests) + suggester (7 tests) — both have tests
+- 343 tests across 16 files (parser: 133, extractor: 285, scorer+suggester: 51)
 
 ### Python
 - Version: 3.14 (project plan says 3.10 but env is 3.14)
@@ -70,6 +74,8 @@ Pydantic model with nested models (Education, Experience, Project, Certification
 ---
 
 ## Build Order (DO NOT DEVIATE)
+
+### ✅ Completed (Pre-Week-5)
 
 0. **Phase 1 — Extractor Bug Fixes** (prerequisite for batch scoring)
    - Fix `try_parse_structured` tuple + string-item handling
@@ -87,6 +93,8 @@ Pydantic model with nested models (Education, Experience, Project, Certification
    - Education: multi-line paragraph parsing
    - Projects: tool extraction from description
    - Languages: language-name detection
+
+### 🔜 Upcoming
 
 3. **Week 5 — Classifier + Streamlit V1**
    - Train Logistic Regression + XGBoost

@@ -1,9 +1,9 @@
 # CV Evaluator & Ranking System — Progress Report
 
 **Generated:** July 11, 2026  
-**Git:** `d519cda` (Week 4 scoring engine + config fix + dataset rename)  
+**Git:** `11bca6e` (Phase 3: text-path rewrites + Phase 2 adapters + population analysis)  
 **Python:** 3.14.3  
-**Overall Completion:** ~72%
+**Overall Completion:** ~77%
 
 ---
 
@@ -40,7 +40,7 @@
 - `src/extractor/experience_extractor.py` — Title, company, dates, duration, responsibilities
 - `src/extractor/misc_extractor.py` — Projects, certifications, languages, achievements, leadership
 - `src/extractor/utils.py` — `try_parse_structured()`, `parse_json_field()` helpers
-- **285 unit tests** (14 test files) — all passing
+- **285 unit tests** (14 test files) — all passing (see tests/)
 - **3000 CVs extracted** to `data/processed/extracted_cvs.json`
 
 **⚠️ Correction — Languages ARE in datasetmaster (inside skills column)**
@@ -75,7 +75,8 @@ The datasetmaster `skills` column has a `"languages"` sub-key with entries like:
 - `src/scorer/feature_builder.py` — `build_features(cv_schema) → np.array` with 12 numeric features
 - `src/suggester/suggester.py` — `generate_suggestions()` with config-driven thresholds, capped at 5 tips
 - `config/rubric_config.json` — restructured: flat layout, all code-expected keys present, `borderline_bands` added, expanded degree mappings
-- **51 unit tests** (test_scorer.py + test_suggester.py) — all passing
+- **51 unit tests** (test_scorer.py + test_suggester.py) — all passing  
+- **Total: 343 tests** across 16 files — all passing
 - **Pipeline verified end-to-end**: extract_all → score_cv → generate_suggestions (day28 script)
 - `scripts/clean_datasets.py` & 8 scripts — fixed `structured_resumes_clean.csv` → `datasetmaster_clean.csv`
 - **Phase 1 bug fixes ✅** — all 6 extractor bugs verified fixed (tuple handling, plain string items, languages routing, NETSOL key fallbacks, "Till Date" support)
