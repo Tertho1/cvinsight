@@ -27,7 +27,7 @@ from src.parser.cleaner import clean_cv_text
 
 logging.basicConfig(level=logging.WARNING)
 
-DATASET   = os.path.join("data", "processed", "structured_resumes_clean.csv")
+DATASET   = os.path.join("data", "processed", "datasetmaster_clean.csv")
 OUTPUT    = os.path.join("data", "processed", "parser_test_results.csv")
 SAMPLE_N  = 20
 MIN_SECTS = 2

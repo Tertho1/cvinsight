@@ -10,7 +10,7 @@ sys.path.insert(0, os.getcwd())
 import pandas as pd
 from src.extractor.contact_extractor import extract_contacts
 
-df = pd.read_csv("data/processed/structured_resumes_clean.csv").head(30)
+df = pd.read_csv("data/processed/datasetmaster_clean.csv").head(30)
 
 print(f"{'Row':<5} {'Extracted Name':<50} {'PI Name':<25} {'Status'}")
 print("-" * 90)

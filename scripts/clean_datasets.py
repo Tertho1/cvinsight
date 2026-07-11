@@ -152,9 +152,9 @@ keep_cols = ['text', 'text_length', 'personal_info', 'experience',
              'achievements']
 res_clean = res[keep_cols].copy()
 
-res_clean.to_csv('data/processed/structured_resumes_clean.csv',
+res_clean.to_csv('data/processed/datasetmaster_clean.csv',
                  index=False, encoding='utf-8')
-report('Structured Resumes', before, len(res_clean),
+report('Structured Resumes (datasetmaster)', before, len(res_clean),
        list(res_clean.columns))
 print(f'  Sample text : {res_clean["text"].iloc[0][:100]}...')
 
@@ -272,7 +272,7 @@ print(f'{"═"*55}')
 
 processed_files = [
     'data/processed/ner_resumes_clean.csv',
-    'data/processed/structured_resumes_clean.csv',
+    'data/processed/datasetmaster_clean.csv',
     'data/processed/classification_clean.csv',
     'data/processed/ats_scores_clean.csv',
     'data/processed/netsol_clean.csv',

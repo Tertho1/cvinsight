@@ -16,7 +16,7 @@ print(f"Result with Cloud Foundry in JSON: {result}")
 
 # Test with actual row 24 data
 import pandas as pd
-df = pd.read_csv("data/processed/structured_resumes_clean.csv")
+df = pd.read_csv("data/processed/datasetmaster_clean.csv")
 row24 = df.iloc[24]
 text24 = str(row24.get("text", ""))
 sections = {"personal_info": str(row24.get("personal_info", ""))}

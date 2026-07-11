@@ -7,7 +7,7 @@ sys.path.insert(0, os.getcwd())
 import pandas as pd
 from src.extractor.extractor import extract_all
 
-df = pd.read_csv("data/processed/structured_resumes_clean.csv").head(30)
+df = pd.read_csv("data/processed/datasetmaster_clean.csv").head(30)
 section_cols = ["education", "experience", "skills", "projects",
                 "certifications", "languages", "achievements", "leadership"]
 

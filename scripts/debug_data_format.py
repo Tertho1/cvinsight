@@ -8,7 +8,7 @@ sys.path.insert(0, os.getcwd())
 
 import pandas as pd
 
-df = pd.read_csv("data/processed/structured_resumes_clean.csv").head(1)
+df = pd.read_csv("data/processed/datasetmaster_clean.csv").head(1)
 
 for col in ["experience", "education", "projects", "skills", "personal_info"]:
     raw = str(df.iloc[0][col])

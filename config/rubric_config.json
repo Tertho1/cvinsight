@@ -1,61 +1,72 @@
 {
   "rubric_version": "1.0",
   "total_points": 100,
-  "sections": {
-    "experience": {
-      "max_points": 25,
-      "description": "Work experience based on total years",
-      "thresholds": {
-        "0_to_1_year": 8,
-        "1_to_3_years": 15,
-        "3_to_5_years": 20,
-        "5_plus_years": 25
-      }
-    },
-    "projects": {
-      "max_points": 20,
-      "description": "Points per project, max 5 projects counted",
-      "points_per_project": 4,
-      "bonus_for_github_link": 1
-    },
-    "skills": {
-      "max_points": 20,
-      "description": "Ratio of matched skills to required skills times max_points"
-    },
-    "education": {
-      "max_points": 15,
-      "description": "Degree level score",
-      "degree_scores": {
-        "phd": 15,
-        "masters": 13,
-        "bachelors": 10,
-        "diploma": 6,
-        "none": 0
-      }
-    },
-    "certifications": {
-      "max_points": 10,
-      "description": "2 points per certification, capped at max",
-      "points_per_cert": 2
-    },
-    "languages": {
-      "max_points": 5,
-      "description": "Points by number of languages spoken",
-      "thresholds": {
-        "1_language": 2,
-        "2_languages": 4,
-        "3_plus_languages": 5
-      }
-    },
-    "leadership": {
-      "max_points": 5,
-      "description": "2 points per leadership role or extracurricular, capped at max",
-      "points_per_role": 2
-    }
+  "experience": {
+    "max_points": 25,
+    "description": "Work experience based on total years",
+    "thresholds": [
+      {"min_years": 0, "max_years": 1, "points": 8},
+      {"min_years": 1, "max_years": 3, "points": 15},
+      {"min_years": 3, "max_years": 5, "points": 20},
+      {"min_years": 5, "max_years": null, "points": 25}
+    ]
   },
-  "labels": {
-    "strong": { "min": 80, "max": 100 },
-    "average": { "min": 50, "max": 79 },
-    "weak": { "min": 0, "max": 49 }
+  "projects": {
+    "max_points": 20,
+    "description": "Points per project, max 5 projects counted",
+    "points_per_project": 4,
+    "bonus_for_github_link": 1,
+    "github_bonus_points": 1,
+    "max_github_bonus": 5
+  },
+  "skills": {
+    "max_points": 20,
+    "description": "Ratio of matched skills to required skills times max_points",
+    "target_skill_count": 15
+  },
+  "education": {
+    "max_points": 15,
+    "description": "Degree level score",
+    "degree_points": {
+      "phd": 15, "PhD": 15, "PHD": 15, "Ph.D.": 15, "ph.d.": 15,
+      "masters": 13, "Master": 13, "Masters": 13, "MS": 13, "MSc": 13, "M.Eng.": 13, "MBA": 13,
+      "master of science": 13, "master of arts": 13, "master of engineering": 13,
+      "bachelors": 10, "Bachelor": 10, "Bachelors": 10, "BS": 10, "BSc": 10, "B.Sc": 10,
+      "B.Tech": 10, "BE": 10, "B.E.": 10, "B.A.": 10, "BA": 10, "bachelor of science": 10,
+      "bachelor of arts": 10, "bachelor of engineering": 10, "bachelor of technology": 10,
+      "diploma": 6, "Diploma": 6, "Associate": 6, "HND": 6, "associate degree": 6,
+      "none": 0, "": 0
+    },
+    "gpa_bonus_threshold": 3.5,
+    "gpa_bonus_points": 2
+  },
+  "certifications": {
+    "max_points": 10,
+    "description": "2 points per certification, capped at max",
+    "points_per_cert": 2
+  },
+  "languages": {
+    "max_points": 5,
+    "description": "Points by number of languages spoken",
+    "one_lang_points": 2,
+    "two_lang_points": 4,
+    "three_plus_points": 5
+  },
+  "leadership": {
+    "max_points": 5,
+    "description": "2 points per leadership role or extracurricular, capped at max",
+    "points_per_role": 2
+  },
+  "label_thresholds": {
+    "strong_min": 80,
+    "strong_max": 100,
+    "average_min": 50,
+    "average_max": 79,
+    "weak_min": 0,
+    "weak_max": 49
+  },
+  "borderline_bands": {
+    "lower": [45, 55],
+    "upper": [75, 85]
   }
 }

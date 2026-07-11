@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 from src.parser.cleaner import clean_cv_text
 
-DATASET = os.path.join("data", "processed", "structured_resumes_clean.csv")
+DATASET = os.path.join("data", "processed", "datasetmaster_clean.csv")
 
 df = pd.read_csv(DATASET)
 print(f"Columns: {list(df.columns)}\n")
