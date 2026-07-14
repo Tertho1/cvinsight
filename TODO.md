@@ -10,6 +10,17 @@ Last updated: 2026-07-11 | Git: `11bca6e` (v0.4) | Tests: 343 passing | Phase 3 
 
 ---
 
+## LLM-Based Extraction (Research Phase)
+
+Real-world CV testing on 9 files exposed format fragility in rule-based extractors. Evaluating small LLMs as replacement/fallback.
+
+- [ ] Test `sandeeppanem/qwen3-0.6b-resume-json` via Ollama on 9 real CVs side-by-side with current extractors
+- [ ] Compare extraction quality (field coverage, accuracy, speed) vs current `extract_all()`
+- [ ] Decide: replace, fallback, or hybrid approach
+- [ ] If accepted: integrate into pipeline (shared prompt function → structured JSON → CVSchema)
+
+---
+
 ## Active Tasks
 
 ### Phase 2 — Dataset Normalization Adapters ✅

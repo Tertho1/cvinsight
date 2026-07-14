@@ -94,18 +94,29 @@ Pydantic model with nested models (Education, Experience, Project, Certification
    - Projects: tool extraction from description
    - Languages: language-name detection
 
+### 🔜 Under Evaluation
+
+3. **LLM-Based CV Extraction (optional)**
+   - Rule-based extractors struggle with real-world DOCX/PDF formats (section splitter fails, title/company reversed, etc.)
+   - Options considered (see `progress.md` Section 6 for full comparison):
+     - A: `sandeeppanem/qwen3-0.6b-resume-json` (LoRA on Qwen3, 0.6B, 3-6s/CV, ~1.8GB RAM) — recommended starter
+     - B: `Qwen2.5 1.5B` (95.7% JSON reliability, 10-15s/CV)
+     - C: `SmolStruct 1.7B` + GBNF (99.5% field accuracy, guaranteed valid JSON)
+     - D: `Gemma 2 2B` (best entity accuracy)
+   - Next: side-by-side test on 9 real CVs → decide replacement/fallback/hybrid
+
 ### 🔜 Upcoming
 
-3. **Week 5 — Classifier + Streamlit V1**
+4. **Week 5 — Classifier + Streamlit V1**
    - Train Logistic Regression + XGBoost
    - `app/app.py` — Streamlit UI: upload → score → display
    - Deploy to Hugging Face Spaces
 
-4. **Week 6 — JD Matching & Ranking (V2)**
+5. **Week 6 — JD Matching & Ranking (V2)**
    - `src/matcher/embedder.py`, `semantic_scorer.py`, `skill_overlap.py`, `ranker.py`
    - Add ranking tab to Streamlit
 
-5. **Week 7 — Fine-Tuning & Final Report (stretch)**
+6. **Week 7 — Fine-Tuning & Final Report (stretch)**
    - Fine-tune NER, retrain classifier, evaluation report
 
 ---

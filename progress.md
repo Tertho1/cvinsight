@@ -198,4 +198,34 @@ streamlit run app/app.py
 2. **Phase 2** — ✅ Create `src/extractor/adapters.py` with 4 adapters (netsol, ner, ats, classification) + `scripts/batch_extract_all.py` for incremental batch extraction
 3. **Phase 3** — ✅ Rewrite text-path extractors: experience (title + description + YYYY-YYYY/MM/YYYY dates), education (paragraph-level + cross-line association), projects (tools from description via skill_extractor), languages (name detection + `Language (Proficiency)` parsing)
 
-**Next: Week 5 — Classifier Training & Streamlit V1**
+**Next: Week 5 — Classifier Training & Streamlit V1** (or explore LLM-based extraction — see Section 6)
+
+---
+
+## 6. LLM-Based Extraction — Exploration Phase
+
+### Motivation
+Real-world CV testing (9 CVs on 2026-07-15) exposed critical gaps in the rule-based extractors:
+- Section splitter fails on DOCX with tables (2 CVs got score 0 and 12)
+- Experience title/company reversed on PDFs (3/9 CVs)
+- Education institution captures degree name (5/9 CVs)
+- Languages extracts skill categories instead of language names
+- Phone regex misses `+1-555-0198` format
+
+### Options Evaluated
+| Option | Model | Params | Speed/CPU | RAM | JSON Rel. | Setup |
+|--------|-------|--------|-----------|-----|-----------|-------|
+| A | `sandeeppanem/qwen3-0.6b-resume-json` (LoRA) | 0.6B | 3-6s | ~1.8GB | 95%+ | Ollama + adapter |
+| B | `Qwen2.5 1.5B` (base instruct) | 1.5B | 10-15s | ~2.5GB | 95.7% | `ollama run qwen2.5:1.5b` |
+| C | `SmolStruct 1.7B` + GBNF grammar | 1.7B | 10-15s | ~2.5GB | 99.5% | llama.cpp |
+| D | `Gemma 2 2B` (best entity accuracy) | 2.6B | 10-15s | ~2.5GB | 95% parse | `ollama run gemma2:2b` |
+
+**Recommended starter:** Option A — `sandeeppanem/qwen3-0.6b-resume-json` (LoRA on Qwen3-0.6B)
+- Purposely fine-tuned on 4,879 resumes for structured JSON extraction
+- Fastest CPU inference (3-6s/CV)
+- Smallest footprint (~1.8GB)
+- Already has a working HF Space demo
+- Apache 2.0 license
+
+### Next Step
+Test Option A on the same 9 real CVs via a side-by-side comparison script against the current `extract_all()`, then decide whether to integrate as a replacement or fallback.
