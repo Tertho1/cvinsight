@@ -378,6 +378,16 @@ def main():
             2. **Extract** — NER + rule-based extraction of skills, experience, education, projects
             3. **Score** — weighted rubric (0-100) → label (Strong/Average/Weak)
             4. **Classify** — TF-IDF + XGBoost on raw text (ML-based label)
-            5. **Suggest** — targeted improvement tips per section
+            5.             **Suggest** — targeted improvement tips per section
             """
         )
+
+
+if __name__ == "__main__":
+    st.set_page_config(
+        page_title="CV Evaluator",
+        page_icon="\U0001F4C4",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+    main()
