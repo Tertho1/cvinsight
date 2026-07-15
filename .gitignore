@@ -13,3 +13,6 @@ demo/**
 # Keep trained models for deployment
 !models/xgb_classifier.pkl
 !models/lr_baseline.pkl
+!models/xgb_booster.model
+!models/xgb_vectorizer.pkl
+!models/xgb_labels.json

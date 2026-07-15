@@ -48,10 +48,36 @@ LABEL_EMOJIS = {"Strong": "\U0001F7E2", "Average": "\U0001F7E0", "Weak": "\U0001
 @st.cache_resource
 def load_classifier():
     import joblib
+    import warnings
     if os.path.exists(XGB_PATH):
-        return joblib.load(XGB_PATH), "XGBoost"
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                return joblib.load(XGB_PATH), "XGBoost"
+        except Exception as e:
+            st.warning(f"XGBoost pickle version mismatch ({e}), trying native format...")
+            native_path = os.path.join(MODELS_DIR, "xgb_booster.model")
+            vec_path = os.path.join(MODELS_DIR, "xgb_vectorizer.pkl")
+            label_path = os.path.join(MODELS_DIR, "xgb_labels.json")
+            if os.path.exists(native_path) and os.path.exists(vec_path):
+                from sklearn.pipeline import Pipeline
+                import xgboost as xgb
+                vec = joblib.load(vec_path)
+                booster = xgb.Booster(model_file=native_path)
+                clf = xgb.XGBClassifier()
+                clf._Booster = booster
+                pipeline = Pipeline([("tfidf", vec), ("clf", clf)])
+                if os.path.exists(label_path):
+                    import json
+                    with open(label_path) as f:
+                        pipeline.label_classes_ = json.load(f)
+                else:
+                    pipeline.label_classes_ = ["Average", "Strong", "Weak"]
+                return pipeline, "XGBoost (native)"
     elif os.path.exists(LR_PATH):
-        return joblib.load(LR_PATH), "Logistic Regression"
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return joblib.load(LR_PATH), "Logistic Regression"
     return None, None
 
 
@@ -95,8 +121,9 @@ def load_rubric_config():
 
 
 def classify_text(model, text):
+    import numpy as np
     raw = model.predict([text])[0]
-    if isinstance(raw, (int, float, type(None))):
+    if isinstance(raw, (int, float, np.integer, np.floating, type(None))):
         label_map = getattr(model, "label_classes_", ["Average", "Strong", "Weak"])
         label = label_map[int(raw)]
     else:

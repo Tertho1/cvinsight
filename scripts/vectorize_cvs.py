@@ -144,6 +144,25 @@ def train_models():
     joblib.dump(xgb_pipe, xgb_path)
     print(f"Saved: {xgb_path}")
 
+    # Save native XGBoost booster for cross-version compatibility
+    from xgboost import XGBClassifier
+    xgb_clf = xgb_pipe.named_steps["clf"]
+    if hasattr(xgb_clf, "get_booster"):
+        booster = xgb_clf.get_booster()
+        native_path = os.path.join(MODELS_DIR, "xgb_booster.model")
+        booster.save_model(native_path)
+        print(f"Saved native booster: {native_path}")
+        # Also save the TF-IDF vectorizer separately
+        vec_path = os.path.join(MODELS_DIR, "xgb_vectorizer.pkl")
+        joblib.dump(xgb_pipe.named_steps["tfidf"], vec_path)
+        print(f"Saved vectorizer: {vec_path}")
+        # Save label mapping for native model loading
+        import json
+        label_path = os.path.join(MODELS_DIR, "xgb_labels.json")
+        with open(label_path, "w") as f:
+            json.dump(le.classes_.tolist(), f)
+        print(f"Saved labels: {label_path}")
+
     # ==============================
     # Baseline: Majority Class
     # ==============================
