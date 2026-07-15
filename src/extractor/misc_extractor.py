@@ -29,6 +29,16 @@ _LANG_PAREN_RE = re.compile(
     r"([A-Za-z]+(?:\s+[A-Za-z]+)*)\s*[\(\[,]\s*([A-Za-z0-9+/]+)\s*[\)\]]"
 )
 
+_TECH_CATEGORY_HEADERS = [
+    "frameworks", "databases", "tools", "other",
+    "technologies", "programming languages", "libraries",
+    "platforms", "devops", "cloud", "ides", "editors",
+    "backend", "frontend", "full-stack", "stacks",
+    "languages & frameworks", "tools & technologies",
+    "tech stack", "technical skills", "core competencies",
+    "programming", "software", "web", "mobile",
+]
+
 GITHUB_PATTERN = re.compile(r"github\.com/[\w-]+/[\w-]+", re.IGNORECASE)
 _YEAR_RE = re.compile(r"\b(20\d{2})\b")
 
@@ -183,19 +193,30 @@ def extract_languages(section_text: str) -> list[dict]:
                 })
         return langs
 
+    def _is_tech_category_line(lower: str) -> bool:
+        first_word = lower.split(":")[0].strip()
+        if first_word in _TECH_CATEGORY_HEADERS:
+            return True
+        return False
+
     langs = []
     for line in section_text.split("\n"):
         line = line.strip()
         if not line:
             continue
         lower = line.lower()
+        # Skip lines that look like tech category headers (e.g. "Frameworks: ...")
+        if _is_tech_category_line(lower):
+            continue
         # Try "Language (Proficiency)" format first
         paren_match = _LANG_PAREN_RE.search(line)
         if paren_match:
             lang_name = paren_match.group(1).strip()
             prof = paren_match.group(2).strip()
-            langs.append({"language": lang_name, "proficiency": prof})
-            continue
+            # Only accept paren match if lang_name is a known spoken language
+            if lang_name.lower() in _KNOWN_LANGUAGES:
+                langs.append({"language": lang_name, "proficiency": prof})
+                continue
         # Try comma-separated "Language, Proficiency"
         if "," in line:
             parts = [p.strip() for p in line.split(",", 1)]
@@ -211,10 +232,7 @@ def extract_languages(section_text: str) -> list[dict]:
         if found_lang:
             prof = next((p for p in LANG_PROFICIENCY if p in lower), None)
             langs.append({"language": found_lang, "proficiency": prof})
-        else:
-            # Fallback: use full line as language name
-            proficiency = next((p for p in LANG_PROFICIENCY if p in lower), None)
-            langs.append({"language": line, "proficiency": proficiency})
+        # If no known spoken language found in line, skip it entirely
     return langs
 
 

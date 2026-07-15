@@ -1,14 +1,15 @@
-venv/
 .venv/
 __pycache__/
 *.pyc
-*.pyo
-.env
-*.pkl
-*.pt
-data/raw/
-data/processed/
 .DS_Store
-.ipynb_checkpoints/
-.pytest_cache/
 .aider*
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+data/
+models/
+demo/**
+
+# Keep trained models for deployment
+!models/xgb_classifier.pkl
+!models/lr_baseline.pkl

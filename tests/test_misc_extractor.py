@@ -129,7 +129,7 @@ class TestExtractLanguagesStructured:
     def test_nan_in_text_path(self):
         result = extract_languages("nan")
         assert isinstance(result, list)
-        assert len(result) == 1
+        assert len(result) == 0
 
 
 class TestExtractLanguagesText:

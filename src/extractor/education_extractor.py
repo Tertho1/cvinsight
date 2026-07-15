@@ -17,6 +17,18 @@ DEGREE_KEYWORDS = {
     "hsc": "HSC", "ssc": "SSC", "high school": "High School",
 }
 
+# Degree-related terms that NER falsely labels as ORG
+_DEGREE_INSTITUTION_FALSE_POSITIVES = {
+    "bachelor", "master", "phd", "doctor", "diploma", "associate",
+    "b.sc", "b.tech", "m.sc", "m.tech", "mba",
+    "bachelor of", "master of", "doctor of",
+    "science in", "technology in", "engineering in", "arts in",
+    "of science", "of technology", "of engineering", "of arts",
+    "computer science", "information technology", "mechanical engineering",
+    "computer engineering", "electrical engineering", "civil engineering",
+    "data science", "business administration",
+}
+
 _YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 _GPA_RE = re.compile(r"(?:gpa|cgpa|g\.p\.a)[:\s]*([\d]+\.[\d]+)", re.IGNORECASE)
 _ORG_FALSE_POSITIVES = {"gpa", "cgpa", "nan", "unknown", "name", "email", "phone"}
@@ -24,6 +36,8 @@ _INSTITUTION_KEYWORDS = [
     "university", "college", "institute", "school", "academy",
     "polytechnic", "iit", "nit", "iiit", "buet", "mit", "stanford",
     "harvard", "oxford", "cambridge", "delft", "eth", "nus",
+    "vit", "bits", "iisc", "nsit", "dtu", "ipu", "amu", "jnu",
+    "bhu", "du",
 ]
 _EDUCATION_YEARS_RE = re.compile(
     r"(\d{4})\s*[-–to]+\s*(\d{4}|Present|Expected)",
@@ -130,7 +144,30 @@ def _extract_institution_name(line: str) -> str:
     # Remove trailing years and dates
     line = _YEAR_RE.sub("", line).strip()
     line = _EDUCATION_YEARS_RE.sub("", line).strip()
-    line = line.strip(",- ")
+    # Remove pipe-separated fragments after the first field
+    if "|" in line:
+        line = line.split("|")[0].strip()
+    # Remove known GPA/grade fragments
+    for frag in ["cgpa:", "gpa:", "g.p.a", "first class", "second class",
+                 "distinction", "class"]:
+        if frag in line.lower():
+            idx = line.lower().index(frag)
+            line = line[:idx].strip()
+    # Remove leading degree keywords and punctuation
+    lower = line.lower()
+    for dk in sorted(DEGREE_KEYWORDS, key=len, reverse=True):
+        if lower.startswith(dk):
+            line = line[len(dk):].lstrip(",- |/")
+            break
+    # Remove leading field-of-study phrases
+    for field_prefix in ["computer science", "information technology",
+                         "mechanical engineering", "electrical engineering",
+                         "civil engineering", "computer engineering",
+                         "data science", "business administration",
+                         "science and", "engineering and"]:
+        if line.lower().startswith(field_prefix):
+            line = line[len(field_prefix):].lstrip(",- |/")
+    line = line.strip(",- |/")
     return line
 
 
@@ -155,7 +192,9 @@ def _parse_education_text(section_text: str) -> list[dict]:
             [o for o in orgs if o.lower() in lower_para
              and "\n" not in o
              and len(o) >= 4
-             and o.lower() not in _ORG_FALSE_POSITIVES],
+             and o.lower() not in _ORG_FALSE_POSITIVES
+             and (not any(fake in o.lower() for fake in _DEGREE_INSTITUTION_FALSE_POSITIVES)
+                  or any(kw in o.lower() for kw in _INSTITUTION_KEYWORDS))],
             key=len, reverse=True
         )
 
@@ -189,6 +228,14 @@ def _parse_education_text(section_text: str) -> list[dict]:
                     institution = para_orgs[0]
                 elif _is_institution_line(line):
                     institution = _extract_institution_name(line)
+                elif _YEAR_RE.search(line) and not any(
+                    dk in lower for dk in _DEGREE_INSTITUTION_FALSE_POSITIVES
+                ):
+                    # Line has a year and no degree keywords — could be an
+                    # institution line in abbreviated format (e.g. "VIT Pune | 2017-2021")
+                    cleaned = _extract_institution_name(line)
+                    if cleaned:
+                        institution = cleaned
 
             # Year detection
             if yr is None:

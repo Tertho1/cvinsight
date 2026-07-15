@@ -270,7 +270,13 @@ _NAME_SUFFIX_BLACKLIST = {
 }
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.\w{2,}")
-_PHONE_RE = re.compile(r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
+_PHONE_RE = re.compile(
+    r"(?:\+?\d{1,3}[-.\s]?)?"
+    r"(?:"
+    r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}"  # US/international 3-3-4 format
+    r"|\d{5}[-.\s]?\d{5}"                    # Indian 5-5 format
+    r")"
+)
 _LINKEDIN_RE = re.compile(r"linkedin\.com/in/[\w-]+", re.IGNORECASE)
 _SALUTATIONS = {"mr", "ms", "mrs", "dr", "prof"}
 _JSON_FRAGMENT_RE = re.compile(r'"[a-z_]+":\s*"')

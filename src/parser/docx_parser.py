@@ -63,24 +63,48 @@ def _extract_with_python_docx(docx_path: str) -> str:
         tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
 
         if tag == "p":
-            # Regular paragraph
-            # Collect runs manually to preserve inline formatting gaps
-            para_text = "".join(run.text for run in child.iter(qn("w:t")))
-            # Include even empty paragraphs as blank lines (section separators)
-            chunks.append(para_text)
+            # Check for text boxes (common in template CVs where each
+            # run is a separately positioned visual line).
+            has_textbox = len(list(child.iter(qn("w:txbxContent")))) > 0
+            if has_textbox:
+                # Text-box layout: each paragraph within each text box
+                # is a separate visual line — join with \n so section_splitter
+                # can detect heading lines.
+                txbx_paras = []
+                for txbx in child.iter(qn("w:txbxContent")):
+                    for p in txbx.iter(qn("w:p")):
+                        p_text = "".join(
+                            t.text or "" for t in p.iter(qn("w:t"))
+                        ).strip()
+                        if p_text:
+                            txbx_paras.append(p_text)
+                if txbx_paras:
+                    chunks.append("\n".join(txbx_paras))
+            else:
+                # Normal paragraph — collect runs preserving inline gaps
+                para_text = "".join(
+                    run.text for run in child.iter(qn("w:t"))
+                )
+                chunks.append(para_text)
 
         elif tag == "tbl":
-            # Table — iterate rows and cells
+            # Table — iterate rows and cells.
+            # Put each cell on its own line (instead of joining with " | ")
+            # so section_splitter can detect standalone heading lines within tables.
             for row in child.iter(qn("w:tr")):
                 row_cells = []
                 for cell in row.iter(qn("w:tc")):
-                    cell_text = " ".join(
-                        "".join(t.text for t in cell.iter(qn("w:t"))).split()
-                    )
-                    if cell_text:
-                        row_cells.append(cell_text)
+                    cell_paras = []
+                    for para in cell.iter(qn("w:p")):
+                        para_text = "".join(
+                            t.text or "" for t in para.iter(qn("w:t"))
+                        ).strip()
+                        if para_text:
+                            cell_paras.append(para_text)
+                    if cell_paras:
+                        row_cells.append("\n".join(cell_paras))
                 if row_cells:
-                    chunks.append("  |  ".join(row_cells))
+                    chunks.append("\n".join(row_cells))
 
     return "\n".join(chunks)
 

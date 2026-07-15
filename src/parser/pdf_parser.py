@@ -32,6 +32,9 @@ def _clean_text(text: str) -> str:
     # Remove null bytes and other control chars (keep newlines/tabs)
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
 
+    # Remove PDF CID markers like (cid:127) that indicate missing glyphs
+    text = re.sub(r"\(cid:\d+\)", "", text)
+
     # Strip trailing whitespace on each line FIRST — pdfplumber layout=True
     # pads lines with spaces, which prevents blank-line detection below
     lines = [line.rstrip() for line in text.splitlines()]

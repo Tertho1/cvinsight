@@ -94,30 +94,40 @@ Pydantic model with nested models (Education, Experience, Project, Certification
    - Projects: tool extraction from description
    - Languages: language-name detection
 
-### 🔜 Under Evaluation
+### ✅ Completed
 
-3. **LLM-Based CV Extraction (optional)**
-   - Rule-based extractors struggle with real-world DOCX/PDF formats (section splitter fails, title/company reversed, etc.)
-   - Options considered (see `progress.md` Section 6 for full comparison):
-     - A: `sandeeppanem/qwen3-0.6b-resume-json` (LoRA on Qwen3, 0.6B, 3-6s/CV, ~1.8GB RAM) — recommended starter
-     - B: `Qwen2.5 1.5B` (95.7% JSON reliability, 10-15s/CV)
-     - C: `SmolStruct 1.7B` + GBNF (99.5% field accuracy, guaranteed valid JSON)
-     - D: `Gemma 2 2B` (best entity accuracy)
-   - Next: side-by-side test on 9 real CVs → decide replacement/fallback/hybrid
+3. **Phase 1c — Rule-Based Extractor Fixes** (✅ completed 2026-07-15)
+   - DOCX table-aware parsing (cells on separate lines, not pipe-joined)
+   - Experience title/company swap detection on PDFs
+   - Education institution filtering (exclude degree names from ORG entities)
+   - Languages: skip tech category lines (e.g. "Frameworks:", "Tools:")
+   - Phone: add Indian number pattern `\d{5}[-.\s]?\d{5}`
+   - PDF: clean `(cid:127)` markers from text output
+   - All 9 demo CVs improved; 343 tests passing
+
+4. **LLM-Based CV Extraction — Custom LoRA Fine-Tuning** (✅ v1 completed 2026-07-15)
+   - `scripts/generate_training_dataset.py` — 4,612 CVs → Qwen3 chat JSONL
+   - `scripts/train_llm.py` — PEFT LoRA on Qwen3-0.6B (2 epochs, eval_loss 0.499)
+   - `scripts/test_finetuned.py` — eval on 9 demo CVs (valid JSON, needs data quality fix)
+   - Both ready-made adapters evaluated and found unsuitable
 
 ### 🔜 Upcoming
 
-4. **Week 5 — Classifier + Streamlit V1**
-   - Train Logistic Regression + XGBoost
-   - `app/app.py` — Streamlit UI: upload → score → display
+5. **Week 5 — ML Text Classifier + Streamlit V1**
+   - TF-IDF vectorization of raw CV text → XGBoost for genuine text classification
+   - Compare with Logistic Regression baseline
+   - `app/app.py` — Streamlit UI: upload → extract → score → classify → suggest
    - Deploy to Hugging Face Spaces
 
-5. **Week 6 — JD Matching & Ranking (V2)**
+6. **Week 6 — JD Matching & Ranking (V2)**
    - `src/matcher/embedder.py`, `semantic_scorer.py`, `skill_overlap.py`, `ranker.py`
    - Add ranking tab to Streamlit
 
-6. **Week 7 — Fine-Tuning & Final Report (stretch)**
-   - Fine-tune NER, retrain classifier, evaluation report
+7. **Week 7 — Fine-Tuning & Final Report**
+   - Custom LoRA fine-tune Qwen3-0.6B on labeled CVs
+   - Bangla CV support (multilingual: Onneshon dataset, B-NER, AI4Bharat Sangraha)
+   - Side-by-side eval: rule-based vs fine-tuned LLM
+   - Full evaluation metrics, final report
 
 ---
 
@@ -129,5 +139,6 @@ Pydantic model with nested models (Education, Experience, Project, Certification
 - **Config-driven** — scoring weights live in `rubric_config.json`, not hardcoded
 - **Schema-first** — all modules read/write `CVSchema`
 - **Commit discipline** — only commit when asked; use descriptive messages
+- **No code pushes** to GitHub without explicit user approval
 - **No comments** in code unless necessary for clarity
 - **Mark progress** in `TODO.md` and `progress.md` after completing tasks

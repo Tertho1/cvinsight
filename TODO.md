@@ -1,71 +1,119 @@
 # TODO — CV Evaluator & Ranking System
 
-Last updated: 2026-07-11 | Git: `11bca6e` (v0.4) | Tests: 343 passing | Phase 3 complete
+Last updated: 2026-07-15 (night) | Git: working tree (Phase 1c + custom LoRA trained) | Tests: 343 passing
 
 ---
 
 ## Current Priority
 
-**EDA & Extraction Analysis** — Apply detailed EDA on all 5 datasets to understand structure/quality, run extraction through all adapters, inspect results, and refine before proceeding to Week 5.
+**Week 6 — JD Matching & Ranking (V2)**
+Add job description matching, semantic similarity, skill overlap, and CV ranking to the Streamlit app.
+
+**Ready to deploy:**
+- `streamlit_app.py` at root (entry point for HF Spaces)
+- `README.md` with HF Space YAML front matter
+- `.gitignore` configured
+- Models: `xgb_classifier.pkl` (1.5 MB) + `lr_baseline.pkl` (300 KB)
+
+To deploy: `git push` to a new HF Space repo.
 
 ---
 
-## LLM-Based Extraction (Research Phase)
+## LLM-Based Extraction (Custom Fine-Tuning Phase)
 
-Real-world CV testing on 9 files exposed format fragility in rule-based extractors. Evaluating small LLMs as replacement/fallback.
+Hardware: RTX 5070 Ti (local inference & training).
 
-- [ ] Test `sandeeppanem/qwen3-0.6b-resume-json` via Ollama on 9 real CVs side-by-side with current extractors
-- [ ] Compare extraction quality (field coverage, accuracy, speed) vs current `extract_all()`
-- [ ] Decide: replace, fallback, or hybrid approach
-- [ ] If accepted: integrate into pipeline (shared prompt function → structured JSON → CVSchema)
+### ✅ Completed — Custom LoRA Fine-Tuning on Qwen3-0.6B
+
+- [x] **`scripts/generate_training_dataset.py`** — converts 4,612 datasetmaster CVs → Qwen3 chat JSONL
+  - Reconstructs natural resume text from structured JSON sections
+  - Runs `extract_all()` to get CVSchema as ground truth
+  - Filters out CVs without valid names (167/4779 skipped)
+- [x] **`scripts/train_llm.py`** — PEFT LoRA training on Qwen3-0.6B (10M trainable params, 1.67% of total)
+  - Qwen/Qwen3-0.6B base, LoRA rank=16, BF16, batch_size=4, grad_accum=4
+  - Trained 2 epochs (552 steps) in ~2 hours on RTX 5070 Ti
+  - Best eval loss: **0.499** (epoch 1). Slight overfit by epoch 2 (eval loss 0.505)
+  - Model saved to `models/qwen3-0.6b-cv-lora/`
+- [x] **Side-by-side eval on 9 demo CVs**
+  - **Strengths:** Extracts all major CVSchema fields (name, email, phone, skills, education, experience, projects, languages); got Barry Allen name right (both rule-based + sandeeppanem failed)
+  - **Issues:** Experience entries duplicated in output; skill duplicates inherited from training data; JSON truncated on longer CVs (needs compact output format); ~42s/CV inference
+  - **Verdict:** Pipeline works, needs data quality improvements for production use
+
+### 🔜 Later — Fine-Tuning Improvements (Post V1)
+
+- [ ] **Deduplicate training data** — collapse near-duplicate experience entries, deduplicate skills per CV
+- [ ] **Compact JSON format** — train with `indent=None` instead of `indent=2` to save ~60% output tokens
+- [ ] **Add more datasets** — include NER (3.3k), ATS (5k), Classification (12k) for diversity
+- [ ] **Retrain** — expect better quality with cleaner data
+- [ ] **Integrate LLM extractor** into pipeline as optional backend
 
 ---
 
-## Active Tasks
+## ✅ Completed — Week 5: ML Text Classifier + Streamlit V1
+
+- [x] **`scripts/vectorize_cvs.py`** — TF-IDF vectorization on 4,612 CVs, LR + XGBoost training
+- [x] **Logistic Regression baseline** — 85.81% accuracy, 0.8642 weighted F1
+- [x] **XGBoost classifier** — **87.65% accuracy, 0.8754 weighted F1** (best model saved)
+- [x] **`scripts/build_classifier_data.py`** — rebuilds training data with reconstructed resume text + rubric labels
+- [x] **`app/app.py`** — Streamlit V1: upload → parse → extract → score → classify → suggest with side-by-side rubric vs ML comparison
+
+### NLP Techniques Used
+
+| Technique | Where | Implementation |
+|-----------|-------|----------------|
+| NER | Extractor | spaCy EntityRuler + PhraseMatcher |
+| Information extraction | Extractor | Rule-based section parsers |
+| Keyword extraction | Extractor | Skill PhraseMatcher on taxonomy |
+| **Text classification** | **Classifier (Week 5)** | **TF-IDF + XGBoost on raw CV text** |
+| Semantic similarity | Matcher (Week 6) | sentence-transformers all-MiniLM-L6-v2 |
+| Ranking model | Matcher (Week 6) | Weighted formula: 0.5×semantic + 0.3×skill + 0.2×rubric |
+
+---
+
+- [x] **DOCX table-aware parsing** — Put each table cell on its own line so section_splitter detects headings
+- [x] **Experience title/company swap** — Detect when company name is treated as title on PDFs
+- [x] **Education institution filtering** — Exclude degree-name ORG entities (e.g. "Bachelor of Science")
+- [x] **Languages: skip tech categories** — Filter "Frameworks:", "Tools:", "Databases:" lines
+- [x] **Phone: Indian number pattern** — Add `\d{5}[-.\s]?\d{5}` for Indian phone formats
+- [x] **PDF: clean (cid:127) markers** — Remove `(cid:127)` from PDF text output
+- [x] **Run `test_cv_files.py` on demo/** — All 9 CVs improved; 343 tests passing
+- [x] **Evaluate `sandeeppanem/qwen3-0.6b-resume-json` LoRA** — Profile summarizer, not detailed extractor
+- [x] **Evaluate `nimendraai/NuExtract-tiny-Resume-Data-Extractor`** — Basic fields only, hallucinates experience
 
 ### Phase 2 — Dataset Normalization Adapters ✅
 
 - [x] **Create `src/extractor/adapters.py`** with 4 adapter functions
-- [x] **`adapt_netsol(row)`** — maps NETSOL JSON keys to normalized sections dict (normalizes `end_date`→dates.end, `degree_title`→degree.level, `university`→institution.name)
-- [x] **`adapt_ner(row)`** — passes raw text through `section_splitter`
-- [x] **`adapt_ats(row)`** — passes raw text through `section_splitter`
-- [x] **`adapt_classification(row)`** — passes raw text through `section_splitter`
+- [x] **`adapt_netsol(row)`** — maps NETSOL JSON keys to normalized sections dict
+- [x] **`adapt_ner(row)`**, **`adapt_ats(row)`**, **`adapt_classification(row)`**
 - [x] **Create `scripts/batch_extract_all.py`** — incremental save every 500 CVs
-- [ ] **Full batch extraction** (long-running: ~26k CVs, run overnight with `python scripts/batch_extract_all.py`)
+- [ ] **Full batch extraction** (~26k CVs, run overnight)
 
 ### Phase 3 — Text-Path Rewrites ✅
 
-- [x] **`_parse_experience_text`**: Title + description extraction, YYYY-YYYY/MM/YYYY date support, "at"/","/"-" title/company parsing
-- [x] **`_parse_education_text`**: Paragraph-level splitting, cross-line field association, NER ORG + keyword institution detection
-- [x] **`extract_projects` text path**: Tools extracted via `skill_extractor.extract_skills()` on description
-- [x] **`extract_languages` text path**: Known language name list, `Language (Proficiency)` and `Language, Proficiency` format parsing
+- [x] All text-path extractors rewritten (experience, education, projects, languages)
 
-### Week 5 — Classifier Training & Streamlit V1
+### Bangla/Bengali CV Support — Three-Phase Plan
 
-- [ ] Train Logistic Regression baseline → `models/lr_baseline.pkl`
-- [ ] Train XGBoost classifier → `models/xgb_classifier.pkl`
-- [ ] `app/app.py` — Streamlit V1: upload CV → pipeline → score + label + suggestions
-- [ ] Polish UI: color coding, section breakdown, JSON download
-- [ ] Deploy to Hugging Face Spaces
-- [ ] Tag v1.0
+- [ ] **Phase 1 (now)**: Fine-tune Qwen3-0.6B on English CVs only
+- [ ] **Phase 2**: Collect 200-500 Bangla CVs + translate → fine-tune mixed model
+- [ ] **Phase 3**: Native Bangla extraction via Onneshon/B-NER datasets
 
 ### Week 6 — JD Matching & Ranking (V2)
 
-- [ ] `src/matcher/embedder.py` — sentence-transformer embedding
-- [ ] `src/matcher/semantic_scorer.py` — cosine similarity
+- [ ] `src/matcher/embedder.py` — sentence-transformer embedder
+- [ ] `src/matcher/semantic_scorer.py` — cosine similarity CV vs JD
 - [ ] `src/matcher/skill_overlap.py` — skill overlap + missing skills
 - [ ] `src/matcher/ranker.py` — ranking formula
-- [ ] Evaluate Spearman correlation ≥ 0.65
-- [ ] Add V2 ranking tab to Streamlit
-- [ ] Tag v2.0
+- [ ] Streamlit V2 with JD matching + ranking tab
 
-### Week 7 — Fine-Tuning & Final Report (stretch)
+### Week 7 — Fine-Tuning & Final Report
 
-- [ ] Fine-tune spaCy NER on Mehyaar dataset
-- [ ] Retrain XGBoost with fine-tuned features
+- [ ] Custom LoRA fine-tune Qwen3-0.6B on improved training data
+- [ ] Bangla CV support evaluation
+- [ ] Side-by-side eval: rule-based vs fine-tuned LLM
+- [ ] Side-by-side eval: rubric classifier vs TF-IDF+XGBoost classifier
 - [ ] Full evaluation metrics (NER F1, classifier F1, NDCG@5, Spearman ρ)
-- [ ] Prepare demo/ folder with test CVs + JDs
-- [ ] Final git push, tag v3.0
+- [ ] Final report
 
 ---
 
@@ -112,6 +160,47 @@ Real-world CV testing on 9 files exposed format fragility in rule-based extracto
 - [x] `score_distribution.png` generated
 - [x] `borderline_review.csv` generated (1382 borderline CVs)
 - [x] Rubric weights adjusted (experience bands expanded, projects 8pts/project, skills target=10, label thresholds: Strong 72+)
+
+---
+
+## Possible Extraction Improvements (From NuExtract Comparison)
+
+Insights from testing `NuExtract-tiny` on 9 demo CVs revealed areas where our rule-based system could still improve:
+
+### 1. Experience: Location Leakage into Duration
+Both our extractor and NuExtract struggle with locations appearing in the duration field. E.g., "Pune" appears as duration for Ananya's entry, "New York" for Mathew's.
+
+**Fix ideas:** Add city/state/country gazetteer to filter known location words from parsed duration strings. Could use `spaCy` GPE entities on the raw duration text.
+
+### 2. Education: Company-Like Institution Names
+NuExtract sometimes treats "Computer Information Systems" as an institution name (Mathew's CV). Our extractor handles this better but could still improve by:
+- Cross-referencing detected institution against a university gazetteer
+- Using NER label confidence scores to filter non-ORG entities
+
+### 3. Skill Deduplication
+Both systems produce duplicate skills. Our extractor is better but still gets occasional duplicates from multi-section scanning.
+
+**Fix:** Add a `deduplicate_skills()` post-processing step that normalizes casing, removes near-duplicates (e.g. "React.js" vs "React"), and preserves the first occurrence.
+
+### 4. Phone Normalization
+NuExtract produces cleaner formatting (e.g. "+91 87654 32109" with consistent spacing). Our extractor can return raw formats.
+
+**Fix:** Add `normalize_phone()` utility to standardize Indian and US phone formats consistently.
+
+### 5. Name Extraction Edge Cases
+NuExtract failed completely on Barry Allen (empty name), while our extractor gets it right. But our extractor still struggles on certain edge cases (pro-cv-template gets "Email" as name).
+
+**Fix:** Add name-confidence heuristic — if extracted name looks like a section header or common word, fall back to alternative extraction strategies (e.g., first line of resume before any heading).
+
+### 6. Cross-Field Hallucination Detection (Inspiration from NuExtract's failure mode)
+NuExtract produces hallucinated experience entries. Our system doesn't hallucinate, but we could add:
+- **Cross-field consistency check:** Detect if experience company is a location word (city name) → flag for review
+- **Duration sanity check:** If duration contains location words or is unreasonably long (>20 years for junior role), flag
+
+### 7. JSON Output Reliability (Applies to LLM Pipeline)
+NuExtract failed to produce valid JSON for the burgundy DOCX (truncated output).
+
+**For LLM pipeline:** Add a robust JSON extraction fallback using regex (find outermost `{...}`) and `json5` parser for lenient parsing of single-quoted strings and trailing commas.
 
 ---
 

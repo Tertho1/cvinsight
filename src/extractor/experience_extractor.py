@@ -36,6 +36,47 @@ _TITLE_COMPANY_RE = re.compile(
 
 _PRESENT = {"present", "current", "till date"}
 
+_COMPANY_SUFFIXES = {
+    "corp", "corporation", "inc", "incorporated", "ltd", "limited",
+    "llc", "llp", "pvt", "private", "technologies", "consulting",
+    "services", "solutions", "group", "systems", "industries", "labs",
+}
+
+_JOB_TITLE_WORDS = {
+    "engineer", "developer", "manager", "analyst", "scientist",
+    "architect", "designer", "lead", "head", "director", "officer",
+    "specialist", "consultant", "coordinator", "administrator",
+    "intern", "trainee", "associate", "executive",
+}
+
+_LOCATION_WORDS = {
+    "bangalore", "bengaluru", "mumbai", "delhi", "pune", "kolkata",
+    "chennai", "hyderabad", "ahmedabad", "india", "nagpur",
+    "new york", "san francisco", "oakland", "remote",
+}
+
+
+def _looks_like_company(text: str, org_entities: set = None) -> bool:
+    lower = text.lower().strip()
+    if not lower:
+        return False
+    words = lower.split()
+    if words and words[-1].strip("., ") in _COMPANY_SUFFIXES:
+        return True
+    if any(loc in lower for loc in _LOCATION_WORDS):
+        return True
+    if org_entities and text.strip() in org_entities:
+        return True
+    return False
+
+
+def _looks_like_job_title(text: str) -> bool:
+    lower = text.lower().strip()
+    if not lower:
+        return False
+    words = lower.split()
+    return any(w in _JOB_TITLE_WORDS for w in words)
+
 
 def compute_months(start_str: str, end_str: str) -> int:
     try:
@@ -215,11 +256,27 @@ def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
 
         # Text before the date match is candidate for title/company
         leading = para[:match_start].strip().strip(",\n\t ")
-        # Use only the last line before the date (first line usually has title+company)
         leading_lines = [l.strip() for l in leading.split("\n") if l.strip()]
+        title, company = "", ""
         if leading_lines:
-            leading = leading_lines[-1]
-        title, company = _parse_title_company(leading)
+            title, company = _parse_title_company(leading_lines[-1])
+            company = company.rstrip(" ,;/-")
+
+            # Backtrack if the extracted title looks like a company name,
+            # OR if the previous line looks like a job title (e.g. "Software Engineer"
+            # on one line, "StartupXYZ | Location" on the next).
+            needs_backtrack = _looks_like_company(title, org_entities)
+            if not needs_backtrack and len(leading_lines) > 1:
+                prev_title, _ = _parse_title_company(leading_lines[-2])
+                needs_backtrack = _looks_like_job_title(prev_title)
+
+            if needs_backtrack and len(leading_lines) > 1:
+                for prev in reversed(leading_lines[:-1]):
+                    pt, pc = _parse_title_company(prev)
+                    if pt and _looks_like_job_title(pt):
+                        title = pt
+                        company = leading_lines[-1].rstrip(" ,;/-")
+                        break
         # Clean company name: strip trailing non-alpha chars, newlines, date fragments
         company = company.rstrip(" ,;/-")
 
