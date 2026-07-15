@@ -9,17 +9,59 @@ Usage:
     streamlit run app/app.py
 """
 
+import faulthandler
 import json
 import os
+import subprocess
 import sys
-import warnings
 import tempfile
+import textwrap
+import warnings
+
+faulthandler.enable()
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+MAX_FILE_MB = 50
+PARSE_TIMEOUT = 60
+
+
+def safe_parse_cv(path):
+    """Run parse_cv in a subprocess to isolate segfault-prone C++ PDF libs."""
+    script = textwrap.dedent(r"""
+        import sys, warnings
+        warnings.filterwarnings("ignore")
+        sys.path.insert(0, {root!r})
+        from src.parser.parser import parse_cv
+        try:
+            text = parse_cv({path!r})
+            sys.stdout.write(text)
+        except Exception as e:
+            sys.stderr.write(str(e))
+            sys.exit(1)
+    """).strip()
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script = script.format(root=root, path=path)
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True, text=True, timeout=PARSE_TIMEOUT
+        )
+        if result.returncode == 0:
+            return result.stdout
+        else:
+            st.error(f"Parsing subprocess failed: {result.stderr}")
+            return ""
+    except subprocess.TimeoutExpired:
+        st.error(f"Parsing timed out after {PARSE_TIMEOUT}s. File may be too large or complex.")
+        return ""
+    except Exception as e:
+        st.error(f"Could not parse file: {e}")
+        return ""
 
 import streamlit as st
 import pandas as pd
@@ -188,6 +230,11 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
+    file_size_mb = uploaded_file.size / (1024 * 1024)
+    if file_size_mb > MAX_FILE_MB:
+        st.error(f"File too large ({file_size_mb:.1f} MB). Max {MAX_FILE_MB} MB.")
+        st.stop()
+
     suffix = os.path.splitext(uploaded_file.name)[1]
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(uploaded_file.read())
@@ -198,7 +245,7 @@ if uploaded_file is not None:
             get_parser_extractor_scorer()
         )
 
-        raw_text = parse_cv(tmp_path)
+        raw_text = safe_parse_cv(tmp_path) if suffix.lower() == ".pdf" else parse_cv(tmp_path)
         if not raw_text or len(raw_text.strip()) < 20:
             st.error("Could not extract text. File may be an image-based PDF.")
             os.unlink(tmp_path)
