@@ -26,43 +26,6 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-MAX_FILE_MB = 50
-PARSE_TIMEOUT = 60
-
-
-def safe_parse_cv(path):
-    """Run parse_cv in a subprocess to isolate segfault-prone C++ PDF libs."""
-    script = textwrap.dedent(r"""
-        import sys, warnings
-        warnings.filterwarnings("ignore")
-        sys.path.insert(0, {root!r})
-        from src.parser.parser import parse_cv
-        try:
-            text = parse_cv({path!r})
-            sys.stdout.write(text)
-        except Exception as e:
-            sys.stderr.write(str(e))
-            sys.exit(1)
-    """).strip()
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    script = script.format(root=root, path=path)
-    try:
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True, text=True, timeout=PARSE_TIMEOUT
-        )
-        if result.returncode == 0:
-            return result.stdout
-        else:
-            st.error(f"Parsing subprocess failed: {result.stderr}")
-            return ""
-    except subprocess.TimeoutExpired:
-        st.error(f"Parsing timed out after {PARSE_TIMEOUT}s. File may be too large or complex.")
-        return ""
-    except Exception as e:
-        st.error(f"Could not parse file: {e}")
-        return ""
-
 import streamlit as st
 import pandas as pd
 
@@ -70,6 +33,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 XGB_PATH = os.path.join(MODELS_DIR, "xgb_classifier.pkl")
 LR_PATH = os.path.join(MODELS_DIR, "lr_baseline.pkl")
+MAX_FILE_MB = 50
+PARSE_TIMEOUT = 60
 
 LABEL_COLORS = {
     "Strong": "#15803d",
@@ -83,11 +48,11 @@ LABEL_EMOJIS = {"Strong": "\U0001F7E2", "Average": "\U0001F7E0", "Weak": "\U0001
 @st.cache_resource
 def load_classifier():
     import joblib
-    import warnings
+    import warnings as _w
     if os.path.exists(XGB_PATH):
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with _w.catch_warnings():
+                _w.simplefilter("ignore")
                 return joblib.load(XGB_PATH), "XGBoost"
         except Exception as e:
             st.warning(f"XGBoost pickle version mismatch ({e}), trying native format...")
@@ -103,22 +68,20 @@ def load_classifier():
                 clf._Booster = booster
                 pipeline = Pipeline([("tfidf", vec), ("clf", clf)])
                 if os.path.exists(label_path):
-                    import json
                     with open(label_path) as f:
                         pipeline.label_classes_ = json.load(f)
                 else:
                     pipeline.label_classes_ = ["Average", "Strong", "Weak"]
                 return pipeline, "XGBoost (native)"
     elif os.path.exists(LR_PATH):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with _w.catch_warnings():
+            _w.simplefilter("ignore")
             return joblib.load(LR_PATH), "Logistic Regression"
     return None, None
 
 
 @st.cache_resource
 def ensure_spacy_model():
-    """Ensure en_core_web_sm is available — download if missing."""
     try:
         import spacy
         try:
@@ -182,207 +145,237 @@ def render_metric_card(title, value, subtitle, color):
     )
 
 
-# ==========================================
-st.title("\U0001F4C4 CV Evaluator & Quality Classifier")
-st.markdown(
-    "Upload a CV to extract information, score against a rubric, "
-    "and classify quality using both **rule-based scoring** and **ML text classification**."
-)
+def safe_parse_cv(path):
+    script = textwrap.dedent(r"""
+        import sys, warnings
+        warnings.filterwarnings("ignore")
+        sys.path.insert(0, {root!r})
+        from src.parser.parser import parse_cv
+        try:
+            text = parse_cv({path!r})
+            sys.stdout.write(text)
+        except Exception as e:
+            sys.stderr.write(str(e))
+            sys.exit(1)
+    """).strip()
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script = script.format(root=root, path=path)
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True, text=True, timeout=PARSE_TIMEOUT
+        )
+        if result.returncode == 0:
+            return result.stdout
+        else:
+            st.error(f"Parsing subprocess failed: {result.stderr}")
+            return ""
+    except subprocess.TimeoutExpired:
+        st.error(f"Parsing timed out after {PARSE_TIMEOUT}s. File may be too large or complex.")
+        return ""
+    except Exception as e:
+        st.error(f"Could not parse file: {e}")
+        return ""
 
-with st.sidebar:
-    st.header("About")
+
+def main():
+    st.title("\U0001F4C4 CV Evaluator & Quality Classifier")
     st.markdown(
-        """
-        **Techniques:**
-        - **NER** — spaCy EntityRuler + PhraseMatcher
-        - **Info Extraction** — rule-based section parsers
-        - **Keyword Extraction** — skill taxonomy
-        - **Text Classification** — TF-IDF + XGBoost
-        - **Semantic Similarity** — *(V2)*
-        """
+        "Upload a CV to extract information, score against a rubric, "
+        "and classify quality using both **rule-based scoring** and **ML text classification**."
     )
-    st.divider()
-    st.caption("CV Evaluator v1.0")
 
-    model_pipeline, model_name = load_classifier()
-    if model_pipeline:
-        st.success(f"ML model: **{model_name}**")
-    else:
-        st.warning("No ML model found. Train with `scripts/vectorize_cvs.py` first.")
+    with st.sidebar:
+        st.header("About")
+        st.markdown(
+            """
+            **Techniques:**
+            - **NER** — spaCy EntityRuler + PhraseMatcher
+            - **Info Extraction** — rule-based section parsers
+            - **Keyword Extraction** — skill taxonomy
+            - **Text Classification** — TF-IDF + XGBoost
+            - **Semantic Similarity** — *(V2)*
+            """
+        )
+        st.divider()
+        st.caption("CV Evaluator v1.0")
 
-    rubric_config = load_rubric_config()
-    with st.expander("\u2699\uFE0F Rubric Weights", expanded=False):
-        for section, cfg in rubric_config.items():
-            if isinstance(cfg, dict) and "max_points" in cfg:
-                st.caption(f"{section}: {cfg['max_points']} pts")
+        model_pipeline, model_name = load_classifier()
+        if model_pipeline:
+            st.success(f"ML model: **{model_name}**")
+        else:
+            st.warning("No ML model found. Train with `scripts/vectorize_cvs.py` first.")
 
-uploaded_file = st.file_uploader(
-    "Upload CV",
-    type=["pdf", "docx", "txt"],
-    help="PDF, DOCX, or plain text"
-)
+        rubric_config = load_rubric_config()
+        with st.expander("\u2699\uFE0F Rubric Weights", expanded=False):
+            for section, cfg in rubric_config.items():
+                if isinstance(cfg, dict) and "max_points" in cfg:
+                    st.caption(f"{section}: {cfg['max_points']} pts")
 
-if uploaded_file is not None:
-    file_size_mb = uploaded_file.size / (1024 * 1024)
-    if file_size_mb > MAX_FILE_MB:
-        st.error(f"File too large ({file_size_mb:.1f} MB). Max {MAX_FILE_MB} MB.")
-        st.stop()
+    uploaded_file = st.file_uploader(
+        "Upload CV",
+        type=["pdf", "docx", "txt"],
+        help="PDF, DOCX, or plain text"
+    )
 
-    suffix = os.path.splitext(uploaded_file.name)[1]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(uploaded_file.read())
-        tmp_path = tmp.name
+    if uploaded_file is not None:
+        file_size_mb = uploaded_file.size / (1024 * 1024)
+        if file_size_mb > MAX_FILE_MB:
+            st.error(f"File too large ({file_size_mb:.1f} MB). Max {MAX_FILE_MB} MB.")
+            st.stop()
 
-    with st.spinner("Parsing, extracting, scoring..."):
-        parse_cv, split_sections, extract_all, score_cv, generate_suggestions = (
-            get_parser_extractor_scorer()
+        suffix = os.path.splitext(uploaded_file.name)[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(uploaded_file.read())
+            tmp_path = tmp.name
+
+        with st.spinner("Parsing, extracting, scoring..."):
+            parse_cv, split_sections, extract_all, score_cv, generate_suggestions = (
+                get_parser_extractor_scorer()
+            )
+
+            raw_text = safe_parse_cv(tmp_path) if suffix.lower() == ".pdf" else parse_cv(tmp_path)
+            if not raw_text or len(raw_text.strip()) < 20:
+                st.error("Could not extract text. File may be an image-based PDF.")
+                os.unlink(tmp_path)
+                st.stop()
+
+            sections = split_sections(raw_text)
+            cv = extract_all(raw_text, sections=sections)
+            if not cv:
+                st.error("Extraction failed.")
+                os.unlink(tmp_path)
+                st.stop()
+
+            cv = score_cv(cv)
+            suggestions = generate_suggestions(cv)
+
+            ml_label = None
+            ml_proba = None
+            if model_pipeline:
+                ml_label, ml_proba = classify_text(model_pipeline, raw_text)
+
+        os.unlink(tmp_path)
+
+        total_score = cv.get("total_score", 0)
+        rubric_label = cv.get("label", "Unknown")
+
+        st.divider()
+        st.subheader("\U0001F4CA Results")
+
+        kpi_cols = st.columns(3)
+        with kpi_cols[0]:
+            render_metric_card("RUBRIC SCORE",
+                               f"{total_score:.0f}/100",
+                               f"Label: {rubric_label}",
+                               LABEL_COLORS.get(rubric_label, "#888"))
+        with kpi_cols[1]:
+            if ml_label:
+                ml_color = LABEL_COLORS.get(ml_label, "#888")
+                conf_str = ""
+                if ml_proba is not None:
+                    idx = {"Average": 0, "Strong": 1, "Weak": 2}.get(ml_label, 0)
+                    conf_str = f"Confidence: {ml_proba[idx]:.1%}"
+                render_metric_card("ML CLASSIFICATION", ml_label, conf_str, ml_color)
+            else:
+                render_metric_card("ML CLASSIFICATION", "\u2014", "No model", "#888")
+        with kpi_cols[2]:
+            if ml_label:
+                if rubric_label == ml_label:
+                    st.markdown(
+                        "<div style='border:1px solid #15803d; border-radius:0.75rem; "
+                        "padding:1.25rem; text-align:center; background:#f0fdf4;'>"
+                        "<div style='font-size:0.8rem; color:#6b7280;'>AGREEMENT</div>"
+                        "<div style='font-size:2.2rem;'>\u2705</div>"
+                        "<div style='font-size:0.85rem; color:#15803d;'>Rubric & ML agree</div></div>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown(
+                        f"<div style='border:1px solid #b45309; border-radius:0.75rem; "
+                        f"padding:1.25rem; text-align:center; background:#fffbeb;'>"
+                        f"<div style='font-size:0.8rem; color:#6b7280;'>AGREEMENT</div>"
+                        f"<div style='font-size:2.2rem;'>\u26A0\uFE0F</div>"
+                        f"<div style='font-size:0.85rem; color:#b45309;'>Rubric: {rubric_label}<br>ML: {ml_label}</div></div>",
+                        unsafe_allow_html=True
+                    )
+            else:
+                render_metric_card("AGREEMENT", "\u2014", "No ML model", "#888")
+
+        st.divider()
+        st.subheader("\U0001F4C8 Section Scores")
+        section_scores = cv.get("section_scores", {})
+        score_data = []
+        for section, score in section_scores.items():
+            cfg = rubric_config.get(section, {})
+            max_pts = cfg.get("max_points", 100) if isinstance(cfg, dict) else 100
+            pct = score / max_pts * 100 if max_pts > 0 else 0
+            score_data.append({"Section": section.capitalize(), "Score": score,
+                               "Max": max_pts, "Pct": pct})
+
+        if score_data:
+            df_scores = pd.DataFrame(score_data)
+            for _, row in df_scores.iterrows():
+                cols = st.columns([2, 6, 1])
+                cols[0].markdown(f"**{row['Section']}**")
+                cols[1].progress(row["Pct"] / 100, text=" ")
+                cols[2].markdown(f"**{row['Score']:.0f}**/{row['Max']:.0f}")
+
+        st.divider()
+        tabs = st.tabs(["\U0001F4CB Extracted Data", "\U0001F4A1 Suggestions", "\U0001F4DD Raw Text"])
+
+        with tabs[0]:
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown(f"**Name:** {cv.get('name', 'N/A')}")
+                st.markdown(f"**Email:** {cv.get('email', 'N/A')}")
+                st.markdown(f"**Phone:** {cv.get('phone', 'N/A')}")
+                st.markdown(f"**Skills ({len(cv.get('skills', []))}):** "
+                            f"{', '.join(cv.get('skills', [])[:10])}"
+                            f"{'...' if len(cv.get('skills', [])) > 10 else ''}")
+            with col_b:
+                st.markdown(f"**Experience:** {len(cv.get('experience', []))} entries")
+                for exp in cv.get("experience", [])[:3]:
+                    exp_title = exp.get("title", "?")
+                    company = exp.get("company", "?")
+                    st.caption(f"  {exp_title} @ {company}")
+                st.markdown(f"**Education:** {len(cv.get('education', []))} entries")
+                for edu in cv.get("education", [])[:2]:
+                    deg = edu.get("degree", "?")
+                    inst = edu.get("institution", "?")
+                    st.caption(f"  {deg} @ {inst}")
+                st.markdown(f"**Projects:** {len(cv.get('projects', []))}")
+                st.markdown(f"**Certifications:** {len(cv.get('certifications', []))}")
+
+        with tabs[1]:
+            if suggestions:
+                for s in suggestions:
+                    st.markdown(f"- {s}")
+            else:
+                st.info("No suggestions needed.")
+
+        with tabs[2]:
+            st.text_area("Extracted text", raw_text, height=250, label_visibility="collapsed")
+
+        st.divider()
+        cv_json = json.dumps(cv, indent=2, default=str)
+        st.download_button(
+            label="\U0001F4E5 Download Full Analysis (JSON)",
+            data=cv_json,
+            file_name=f"{uploaded_file.name}_analysis.json",
+            mime="application/json",
         )
 
-        raw_text = safe_parse_cv(tmp_path) if suffix.lower() == ".pdf" else parse_cv(tmp_path)
-        if not raw_text or len(raw_text.strip()) < 20:
-            st.error("Could not extract text. File may be an image-based PDF.")
-            os.unlink(tmp_path)
-            st.stop()
-
-        sections = split_sections(raw_text)
-        cv = extract_all(raw_text, sections=sections)
-        if not cv:
-            st.error("Extraction failed.")
-            os.unlink(tmp_path)
-            st.stop()
-
-        cv = score_cv(cv)
-        suggestions = generate_suggestions(cv)
-
-        ml_label = None
-        ml_proba = None
-        if model_pipeline:
-            ml_label, ml_proba = classify_text(model_pipeline, raw_text)
-
-    os.unlink(tmp_path)
-
-    total_score = cv.get("total_score", 0)
-    rubric_label = cv.get("label", "Unknown")
-
-    st.divider()
-    st.subheader("\U0001F4CA Results")
-
-    kpi_cols = st.columns(3)
-    with kpi_cols[0]:
-        render_metric_card("RUBRIC SCORE",
-                           f"{total_score:.0f}/100",
-                           f"Label: {rubric_label}",
-                           LABEL_COLORS.get(rubric_label, "#888"))
-    with kpi_cols[1]:
-        if ml_label:
-            ml_color = LABEL_COLORS.get(ml_label, "#888")
-            conf_str = ""
-            if ml_proba is not None:
-                idx = {"Average": 0, "Strong": 1, "Weak": 2}.get(ml_label, 0)
-                conf_str = f"Confidence: {ml_proba[idx]:.1%}"
-            render_metric_card("ML CLASSIFICATION", ml_label, conf_str, ml_color)
-        else:
-            render_metric_card("ML CLASSIFICATION", "\u2014", "No model", "#888")
-    with kpi_cols[2]:
-        if ml_label:
-            if rubric_label == ml_label:
-                st.markdown(
-                    "<div style='border:1px solid #15803d; border-radius:0.75rem; "
-                    "padding:1.25rem; text-align:center; background:#f0fdf4;'>"
-                    "<div style='font-size:0.8rem; color:#6b7280;'>AGREEMENT</div>"
-                    "<div style='font-size:2.2rem;'>\u2705</div>"
-                    "<div style='font-size:0.85rem; color:#15803d;'>Rubric & ML agree</div></div>",
-                    unsafe_allow_html=True
-                )
-            else:
-                st.markdown(
-                    f"<div style='border:1px solid #b45309; border-radius:0.75rem; "
-                    f"padding:1.25rem; text-align:center; background:#fffbeb;'>"
-                    f"<div style='font-size:0.8rem; color:#6b7280;'>AGREEMENT</div>"
-                    f"<div style='font-size:2.2rem;'>\u26A0\uFE0F</div>"
-                    f"<div style='font-size:0.85rem; color:#b45309;'>Rubric: {rubric_label}<br>ML: {ml_label}</div></div>",
-                    unsafe_allow_html=True
-                )
-        else:
-            render_metric_card("AGREEMENT", "\u2014", "No ML model", "#888")
-
-    # Section breakdown with progress bars
-    st.divider()
-    st.subheader("\U0001F4C8 Section Scores")
-    section_scores = cv.get("section_scores", {})
-    score_data = []
-    for section, score in section_scores.items():
-        cfg = rubric_config.get(section, {})
-        max_pts = cfg.get("max_points", 100) if isinstance(cfg, dict) else 100
-        pct = score / max_pts * 100 if max_pts > 0 else 0
-        score_data.append({"Section": section.capitalize(), "Score": score,
-                           "Max": max_pts, "Pct": pct})
-
-    if score_data:
-        df_scores = pd.DataFrame(score_data)
-        for _, row in df_scores.iterrows():
-            cols = st.columns([2, 6, 1])
-            cols[0].markdown(f"**{row['Section']}**")
-            cols[1].progress(row["Pct"] / 100, text=" ")
-            cols[2].markdown(f"**{row['Score']:.0f}**/{row['Max']:.0f}")
-
-    # Candidate details
-    st.divider()
-    tabs = st.tabs(["\U0001F4CB Extracted Data", "\U0001F4A1 Suggestions", "\U0001F4DD Raw Text"])
-
-    with tabs[0]:
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.markdown(f"**Name:** {cv.get('name', 'N/A')}")
-            st.markdown(f"**Email:** {cv.get('email', 'N/A')}")
-            st.markdown(f"**Phone:** {cv.get('phone', 'N/A')}")
-            st.markdown(f"**Skills ({len(cv.get('skills', []))}):** "
-                        f"{', '.join(cv.get('skills', [])[:10])}"
-                        f"{'...' if len(cv.get('skills', [])) > 10 else ''}")
-        with col_b:
-            st.markdown(f"**Experience:** {len(cv.get('experience', []))} entries")
-            for exp in cv.get("experience", [])[:3]:
-                title = exp.get("title", "?")
-                company = exp.get("company", "?")
-                st.caption(f"  {title} @ {company}")
-            st.markdown(f"**Education:** {len(cv.get('education', []))} entries")
-            for edu in cv.get("education", [])[:2]:
-                deg = edu.get("degree", "?")
-                inst = edu.get("institution", "?")
-                st.caption(f"  {deg} @ {inst}")
-            st.markdown(f"**Projects:** {len(cv.get('projects', []))}")
-            st.markdown(f"**Certifications:** {len(cv.get('certifications', []))}")
-
-    with tabs[1]:
-        if suggestions:
-            for s in suggestions:
-                st.markdown(f"- {s}")
-        else:
-            st.info("No suggestions needed.")
-
-    with tabs[2]:
-        st.text_area("Extracted text", raw_text, height=250, label_visibility="collapsed")
-
-    # Download
-    st.divider()
-    cv_json = json.dumps(cv, indent=2, default=str)
-    st.download_button(
-        label="\U0001F4E5 Download Full Analysis (JSON)",
-        data=cv_json,
-        file_name=f"{uploaded_file.name}_analysis.json",
-        mime="application/json",
-    )
-
-else:
-    st.info("Upload a CV to begin analysis.")
-    st.markdown(
-        """
-        ---
-        **Pipeline:**
-        1. **Parse** — extract text from PDF/DOCX/TXT
-        2. **Extract** — NER + rule-based extraction of skills, experience, education, projects
-        3. **Score** — weighted rubric (0-100) → label (Strong/Average/Weak)
-        4. **Classify** — TF-IDF + XGBoost on raw text (ML-based label)
-        5. **Suggest** — targeted improvement tips per section
-        """
-    )
+    else:
+        st.info("Upload a CV to begin analysis.")
+        st.markdown(
+            """
+            ---
+            **Pipeline:**
+            1. **Parse** — extract text from PDF/DOCX/TXT
+            2. **Extract** — NER + rule-based extraction of skills, experience, education, projects
+            3. **Score** — weighted rubric (0-100) → label (Strong/Average/Weak)
+            4. **Classify** — TF-IDF + XGBoost on raw text (ML-based label)
+            5. **Suggest** — targeted improvement tips per section
+            """
+        )
