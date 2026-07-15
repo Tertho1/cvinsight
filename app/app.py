@@ -236,7 +236,9 @@ def main():
 
             raw_text = safe_parse_cv(tmp_path) if suffix.lower() == ".pdf" else parse_cv(tmp_path)
             if not raw_text or len(raw_text.strip()) < 20:
-                st.error("Could not extract text. File may be an image-based PDF.")
+                st.error("Could not extract text. File may be an image-based (scanned) PDF. "
+                         "OCR requires system binaries (poppler-utils, tesseract-ocr) "
+                         "that are not available on Streamlit Cloud's free tier.")
                 os.unlink(tmp_path)
                 st.stop()
 

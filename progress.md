@@ -1,8 +1,8 @@
 # CV Evaluator & Ranking System — Progress Report
 
 **Generated:** July 16, 2026 (night)  
-**Git:** working tree (Week 5 — ML Classifier + Streamlit V1 completed)  
-**Python:** 3.14.3  
+**Git:** Deployed at https://cvinsight-io.streamlit.app (Week 5 — ML Classifier + Streamlit V1)  
+**Python:** 3.14.6 (Cloud) / 3.14.3 (local)  
 **Overall Completion:** ~98%
 
 ---
@@ -109,6 +109,16 @@ All 6 priorities fixed on 9 real-world CVs (4 PDF + 3 DOCX + 2 TXT):
 - **Rubric weights adjusted** — experience bands expanded (7 tiers), projects 8pts/project, skills target=10, label thresholds: Strong 72+
 - **Distribution now:** Strong 24.6%, Average 73.7%, Weak 1.7% (mean 66.3, std 7.4)
 - **Remaining:** Manual review of 50 borderline CVs (Day 26), then proceed to Phase 2
+
+### Deployment to Streamlit Community Cloud (2026-07-16)
+
+- **URL:** https://cvinsight-io.streamlit.app
+- **Working:** PDF (text-layer), DOCX, TXT files — parse → extract → score → classify → suggest
+- **Not working:** Scanned/image-based PDFs — OCR requires system binaries (`poppler-utils`, `tesseract-ocr`) not available on Cloud free tier
+- **Model loaded:** XGBoost 3.3.0 (re-saved for version compatibility)
+- **Subprocess isolation:** PDF parsing runs in subprocess to contain segfaults from C++ PDFium engine
+- **50 MB file size limit** enforced to prevent OOM on 1 GB RAM container
+- **Model files tracked:** `xgb_classifier.pkl` + `xgb_booster.model` (native format) + `xgb_vectorizer.pkl` + `xgb_labels.json`
 
 ### Week 5 — ML Text Classifier & Streamlit V1 ✅ (100%)
 

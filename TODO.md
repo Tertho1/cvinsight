@@ -1,6 +1,6 @@
 # TODO — CV Evaluator & Ranking System
 
-Last updated: 2026-07-15 (night) | Git: working tree (Phase 1c + custom LoRA trained) | Tests: 343 passing
+Last updated: 2026-07-16 | Deployed: https://cvinsight-io.streamlit.app | Tests: 343 passing
 
 ---
 
@@ -9,13 +9,9 @@ Last updated: 2026-07-15 (night) | Git: working tree (Phase 1c + custom LoRA tra
 **Week 6 — JD Matching & Ranking (V2)**
 Add job description matching, semantic similarity, skill overlap, and CV ranking to the Streamlit app.
 
-**Ready to deploy:**
-- `streamlit_app.py` at root (entry point for HF Spaces)
-- `README.md` with HF Space YAML front matter
-- `.gitignore` configured
-- Models: `xgb_classifier.pkl` (1.5 MB) + `lr_baseline.pkl` (300 KB)
-
-To deploy: `git push` to a new HF Space repo.
+**Deployed:** Streamlit Community Cloud (https://cvinsight-io.streamlit.app)
+- PDF (text-layer), DOCX, TXT — working
+- **Scanned/image-based PDFs** — OCR not available (Streamlit Cloud lacks system binaries: `poppler-utils`, `tesseract-ocr`)
 
 ---
 
@@ -221,6 +217,10 @@ NuExtract failed to produce valid JSON for the burgundy DOCX (truncated output).
 8. **Certification coverage 0.1%** — datasetmaster has only 9 non-null certification rows
 9. **SyntaxWarning `"\/"` in test** — Harmless
 10. **Python 3.14 vs 3.10** — All packages work
+
+### Deployment (Streamlit Cloud)
+13. **OCR requires system binaries** — `poppler-utils` and `tesseract-ocr` not available on Cloud free tier. Scanned PDFs show "Could not extract text" error. To fix: use cloud OCR API (Google Vision) or upgrade to a Docker-capable host.
+14. **1 GB RAM limit** — Large PDFs or complex processing may cause OOM kills. 50 MB file size limit enforced in app.
 
 ### Data Quality
 11. **No Strong CVs before config tweak** — Label thresholds adjusted to 72+/50-71/0-49 to match data reality
