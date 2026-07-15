@@ -1,6 +1,8 @@
 ﻿streamlit>=1.44
 spacy>=3.8
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85
+https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl#sha256=b658ea1a56ed1a9a33519474e74b2c3584ad43fa08c763b0aad33ce5dab6f14e
+https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.8.0/en_core_web_trf-3.8.0-py3-none-any.whl#sha256=5581e6c70f89dfecf0f7c3e4a8e0367aa68a486cf00209b5bb0be3bc8e00c797
 xgboost>=3.0
 scikit-learn>=1.6
 pandas>=2.2

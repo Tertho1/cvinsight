@@ -1,11 +1,10 @@
 import json
 import re
-import spacy
 from dateparser import parse as dparse
 from datetime import datetime
-from src.extractor.utils import try_parse_structured
+from src.extractor.utils import try_parse_structured, load_spacy_model
 
-nlp = spacy.load("en_core_web_sm")
+nlp = load_spacy_model()
 
 _DATE_RANGE_RE = re.compile(
     r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[.,]?\s+(\d{4})"

@@ -84,3 +84,25 @@ def _extract_json_objects(text: str) -> list[dict]:
 def parse_json_field(raw: str) -> list[dict] | dict | None:
     """Parse a structured field from the dataset into Python objects."""
     return try_parse_structured(raw)
+
+
+_MODEL_CACHE = {}
+
+
+def load_spacy_model():
+    """Load the best available spaCy model with fallback chain: trf → md → sm."""
+    if "nlp" in _MODEL_CACHE:
+        return _MODEL_CACHE["nlp"]
+    try:
+        import spacy
+    except ImportError:
+        raise ImportError("spacy is required")
+    for model in ("en_core_web_trf", "en_core_web_md", "en_core_web_sm"):
+        try:
+            nlp = spacy.load(model)
+            _MODEL_CACHE["nlp"] = nlp
+            _MODEL_CACHE["name"] = model
+            return nlp
+        except OSError:
+            continue
+    raise OSError("No spaCy model found (tried en_core_web_trf, en_core_web_md, en_core_web_sm)")

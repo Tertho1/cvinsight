@@ -1,9 +1,8 @@
 import json
 import re
-import spacy
-from src.extractor.utils import try_parse_structured
+from src.extractor.utils import try_parse_structured, load_spacy_model
 
-nlp = spacy.load("en_core_web_sm")
+nlp = load_spacy_model()
 
 DEGREE_KEYWORDS = {
     "phd": "PhD", "ph.d": "PhD", "doctor of philosophy": "PhD",
