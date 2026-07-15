@@ -101,6 +101,7 @@ def train_models():
     # Save LR model
     os.makedirs(MODELS_DIR, exist_ok=True)
     import joblib
+    lr_pipe.label_classes_ = le.classes_.tolist()
     lr_path = os.path.join(MODELS_DIR, "lr_baseline.pkl")
     joblib.dump(lr_pipe, lr_path)
     print(f"Saved: {lr_path}")
@@ -138,6 +139,7 @@ def train_models():
     xgb_f1 = f1_score(y_test_str, y_pred_xgb, average="weighted")
     xgb_acc = accuracy_score(y_test_str, y_pred_xgb)
 
+    xgb_pipe.label_classes_ = le.classes_.tolist()
     xgb_path = os.path.join(MODELS_DIR, "xgb_classifier.pkl")
     joblib.dump(xgb_pipe, xgb_path)
     print(f"Saved: {xgb_path}")
