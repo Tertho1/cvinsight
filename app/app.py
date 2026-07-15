@@ -66,13 +66,6 @@ def safe_parse_cv(path):
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(
-    page_title="CV Evaluator",
-    page_icon="\U0001F4C4",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 XGB_PATH = os.path.join(MODELS_DIR, "xgb_classifier.pkl")
