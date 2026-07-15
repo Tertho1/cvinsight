@@ -56,7 +56,27 @@ def load_classifier():
 
 
 @st.cache_resource
+def ensure_spacy_model():
+    """Ensure en_core_web_sm is available — download if missing."""
+    try:
+        import spacy
+        try:
+            spacy.load("en_core_web_sm")
+        except OSError:
+            with st.spinner("Downloading spaCy model (first run only)..."):
+                from spacy.cli.download import download
+                download("en_core_web_sm")
+                spacy.load("en_core_web_sm")
+    except Exception as e:
+        st.error(f"spaCy model error: {e}")
+        return False
+    return True
+
+
+@st.cache_resource
 def get_parser_extractor_scorer():
+    if not ensure_spacy_model():
+        st.stop()
     from src.parser.parser import parse_cv
     from src.parser.section_splitter import split_sections
     from src.extractor.extractor import extract_all
