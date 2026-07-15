@@ -123,14 +123,71 @@ def _clean_ocr_text(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def ocr_pdf_easyocr(path: str, scale: float = 2.0) -> str:
+def _preprocess_for_ocr(pil_image):
+    """Preprocess a PIL image for better OCR accuracy.
+
+    Increases contrast, sharpens, converts to grayscale, and binarizes
+    to reduce noise that easyocr struggles with on document text.
+    """
+    import numpy as np
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+
+    img = pil_image.convert("L")
+
+    img = ImageOps.autocontrast(img, cutoff=5)
+
+    enhancer = ImageEnhance.Contrast(img)
+    img = enhancer.enhance(1.5)
+
+    img = img.filter(ImageFilter.SHARPEN)
+
+    arr = np.array(img, dtype=np.uint8)
+    threshold = arr.mean() * 0.8
+    if threshold > 0:
+        arr = np.where(arr > threshold, 255, 0).astype(np.uint8)
+
+    return arr
+
+
+def _fix_easyocr_errors(text: str) -> str:
+    """Fix common easyocr transcription errors on document text."""
+    if not text:
+        return ""
+
+    fixes = {
+        r"(?<![A-Za-z])0(?![A-Za-z])": "O",
+        r"(?<![A-Za-z])1(?![A-Za-z0-9])": "l",
+        r"(?<!\w)5(?=\s*[A-Z][a-z])": "S",
+        r"(?<!\w)6(?=\s*[A-Z][a-z])": "G",
+        r"t0\b": "to",
+        r"\b0n": "on",
+        r"\bthc\b": "the",
+        r"\bthc ": "the ",
+        r"\bc0m": "com",
+        r"\bg0\b": "go",
+    }
+    for pattern, replacement in fixes.items():
+        text = re.sub(pattern, replacement, text)
+
+    text = re.sub(r";", ",", text)
+    text = re.sub(r"[»«]", '"', text)
+
+    return text
+
+
+def ocr_pdf_easyocr(path: str, scale: float = 3.0, min_confidence: float = 0.3,
+                     max_pages: int = 15) -> str:
     """
     Fallback OCR using pypdfium2 + easyocr (no system binaries needed).
-    Used when pytesseract/poppler are not available (e.g. Streamlit Cloud).
+
+    Includes image preprocessing (grayscale, contrast, sharpen, binarize),
+    confidence filtering, and post-processing for better accuracy.
 
     Args:
         path: Path to the .pdf file.
-        scale: Rendering scale (2.0 = 144 DPI, balances speed vs accuracy).
+        scale: Rendering scale (3.0 = 216 DPI, good for most documents).
+        min_confidence: Minimum confidence (0-1) to keep a text detection.
+        max_pages: Maximum pages to OCR (prevents timeout on large PDFs).
 
     Returns:
         OCR-extracted text, cleaned and normalized.
@@ -169,17 +226,22 @@ def ocr_pdf_easyocr(path: str, scale: float = 2.0) -> str:
         logger.error(f"pypdfium2 failed to open {pdf_path.name}: {e}")
         return ""
 
+    total_pages = min(len(pdf), max_pages)
     page_texts = []
-    for i in range(len(pdf)):
+    for i in range(total_pages):
         try:
             page = pdf[i]
             bitmap = page.render(scale=scale)
             pil_image = bitmap.to_pil()
-            np_image = np.array(pil_image)
-            results = reader.readtext(np_image, detail=0, paragraph=True)
-            page_text = "\n".join(results)
+            processed = _preprocess_for_ocr(pil_image)
+            results = reader.readtext(processed, detail=1, paragraph=False)
+
+            filtered = [text for text, conf in results if conf >= min_confidence]
+            page_text = "\n".join(filtered)
+            page_text = _fix_easyocr_errors(page_text)
             page_texts.append(page_text)
-            logger.debug(f"easyocr page {i+1}: {len(page_text)} chars")
+            logger.debug(f"easyocr page {i+1}: {len(page_text)} chars "
+                        f"({len(filtered)}/{len(results)} kept)")
         except Exception as e:
             logger.warning(f"easyocr failed on page {i+1}: {e}")
             continue

@@ -34,7 +34,7 @@ MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 XGB_PATH = os.path.join(MODELS_DIR, "xgb_classifier.pkl")
 LR_PATH = os.path.join(MODELS_DIR, "lr_baseline.pkl")
 MAX_FILE_MB = 50
-PARSE_TIMEOUT = 60
+PARSE_TIMEOUT = 180  # 3 min for OCR-heavy PDFs on Cloud
 
 LABEL_COLORS = {
     "Strong": "#15803d",
