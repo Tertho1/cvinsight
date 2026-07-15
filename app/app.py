@@ -83,8 +83,14 @@ def load_classifier():
 @st.cache_resource
 def ensure_spacy_model():
     try:
-        from src.extractor.utils import load_spacy_model
-        load_spacy_model()
+        import spacy
+        try:
+            spacy.load("en_core_web_sm")
+        except OSError:
+            with st.spinner("Downloading spaCy model (first run only)..."):
+                from spacy.cli.download import download
+                download("en_core_web_sm")
+                spacy.load("en_core_web_sm")
     except Exception as e:
         st.error(f"spaCy model error: {e}")
         return False

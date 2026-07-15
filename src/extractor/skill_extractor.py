@@ -1,9 +1,8 @@
 # src/extractor/skill_extractor.py
-import json, os
+import json, os, spacy
 from spacy.matcher import PhraseMatcher
-from src.extractor.utils import load_spacy_model
 
-nlp = load_spacy_model()
+nlp = spacy.load("en_core_web_sm")
 
 def load_skills(taxonomy_path="config/skill_taxonomy.json") -> list:
     """

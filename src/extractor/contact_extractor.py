@@ -1,11 +1,23 @@
 import re
 import logging
 from typing import Optional
-from src.extractor.utils import try_parse_structured, load_spacy_model
+import spacy
+from src.extractor.utils import try_parse_structured
 
 logger = logging.getLogger(__name__)
 
-nlp = load_spacy_model()
+# ── Load spaCy model with fallback chain ──────────────────────────
+_SPACY_MODEL = "en_core_web_sm"
+for model in ("en_core_web_trf", "en_core_web_md", "en_core_web_sm"):
+    try:
+        nlp = spacy.load(model)
+        _SPACY_MODEL = model
+        logger.info(f"Loaded {model}")
+        break
+    except OSError:
+        continue
+else:
+    raise OSError("No spaCy model found (tried en_core_web_trf, en_core_web_md, en_core_web_sm)")
 
 # ── Known tech terms that NER models commonly mislabel as PERSON ─────
 _TECH_TERMS = {
