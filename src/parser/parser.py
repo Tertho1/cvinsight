@@ -89,28 +89,42 @@ def parse_cv(path: str) -> str:
     )
 
     try:
-        from src.parser.ocr_parser import ocr_pdf, ocr_available
+        from src.parser.ocr_parser import ocr_pdf, ocr_available, \
+            ocr_pdf_easyocr, easyocr_available
 
-        if not ocr_available():
+        # Strategy A: pytesseract (fast, needs system Tesseract binary)
+        if ocr_available():
+            logger.info("Tesseract found, using pytesseract OCR")
+            try:
+                ocr_text = ocr_pdf(str(cv_path))
+                if ocr_text and len(ocr_text.strip()) > len(text.strip()):
+                    logger.info(f"pytesseract OCR succeeded ({len(ocr_text)} chars)")
+                    return ocr_text
+            except Exception as e:
+                logger.warning(f"pytesseract OCR failed: {e}")
+
+        # Strategy B: easyocr (no system binaries, pure Python)
+        if easyocr_available():
+            logger.info("Tesseract unavailable, trying easyocr fallback")
+            try:
+                ocr_text = ocr_pdf_easyocr(str(cv_path))
+                if ocr_text and len(ocr_text.strip()) > len(text.strip()):
+                    logger.info(f"easyocr OCR succeeded ({len(ocr_text)} chars)")
+                    return ocr_text
+            except Exception as e:
+                logger.warning(f"easyocr OCR failed: {e}")
+
+        if not ocr_available() and not easyocr_available():
             logger.warning(
-                "Tesseract not installed -- OCR skipped. "
-                "To enable: install Tesseract from "
-                "https://github.com/UB-Mannheim/tesseract/wiki "
-                "then run: pip install pytesseract pdf2image"
+                "No OCR available. Install Tesseract for fast OCR, "
+                "or run: pip install easyocr pypdfium2 for pure-Python OCR"
             )
-            return text
 
-        ocr_text = ocr_pdf(str(cv_path))
-
-        if ocr_text and len(ocr_text.strip()) > len(text.strip()):
-            logger.info(f"OCR succeeded ({len(ocr_text)} chars)")
-            return ocr_text
-        else:
-            logger.warning("OCR returned no improvement -- returning digital text")
-            return text
+        logger.warning("All OCR methods failed -- returning digital text")
+        return text
 
     except ImportError as e:
-        logger.warning(f"OCR dependencies missing: {e}")
+        logger.warning(f"OCR import error: {e}")
         return text
     except Exception as e:
         logger.warning(f"OCR failed unexpectedly: {e}")

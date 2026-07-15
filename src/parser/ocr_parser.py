@@ -123,6 +123,81 @@ def _clean_ocr_text(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def ocr_pdf_easyocr(path: str, scale: float = 2.0) -> str:
+    """
+    Fallback OCR using pypdfium2 + easyocr (no system binaries needed).
+    Used when pytesseract/poppler are not available (e.g. Streamlit Cloud).
+
+    Args:
+        path: Path to the .pdf file.
+        scale: Rendering scale (2.0 = 144 DPI, balances speed vs accuracy).
+
+    Returns:
+        OCR-extracted text, cleaned and normalized.
+        Empty string if OCR fails.
+    """
+    pdf_path = Path(path)
+    if pdf_path.suffix.lower() != ".pdf":
+        raise ValueError(f"Expected a .pdf file, got: {pdf_path.suffix}")
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    try:
+        import numpy as np
+        import pypdfium2 as pdfium
+    except ImportError:
+        logger.warning("pypdfium2 not installed, cannot render PDF pages")
+        return ""
+
+    try:
+        import easyocr
+    except ImportError:
+        logger.warning("easyocr not installed, cannot perform OCR")
+        return ""
+
+    logger.info(f"Running easyocr OCR on: {pdf_path.name} (scale={scale})")
+
+    try:
+        reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+    except Exception as e:
+        logger.error(f"Failed to initialize easyocr Reader: {e}")
+        return ""
+
+    try:
+        pdf = pdfium.PdfDocument(str(pdf_path))
+    except Exception as e:
+        logger.error(f"pypdfium2 failed to open {pdf_path.name}: {e}")
+        return ""
+
+    page_texts = []
+    for i in range(len(pdf)):
+        try:
+            page = pdf[i]
+            bitmap = page.render(scale=scale)
+            pil_image = bitmap.to_pil()
+            np_image = np.array(pil_image)
+            results = reader.readtext(np_image, detail=0, paragraph=True)
+            page_text = "\n".join(results)
+            page_texts.append(page_text)
+            logger.debug(f"easyocr page {i+1}: {len(page_text)} chars")
+        except Exception as e:
+            logger.warning(f"easyocr failed on page {i+1}: {e}")
+            continue
+
+    raw = "\n\n".join(page_texts)
+    return _clean_ocr_text(raw)
+
+
+def easyocr_available() -> bool:
+    """Check whether the easyocr + pypdfium2 stack is available."""
+    try:
+        import pypdfium2
+        import easyocr
+        return True
+    except ImportError:
+        return False
+
+
 def ocr_pdf(path: str, dpi: int = 300) -> str:
     """
     Extract text from a scanned/image-based PDF using OCR.
