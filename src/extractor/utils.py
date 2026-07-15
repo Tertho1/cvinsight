@@ -97,7 +97,7 @@ def load_spacy_model():
         import spacy
     except ImportError:
         raise ImportError("spacy is required")
-    for model in ("en_core_web_trf", "en_core_web_md", "en_core_web_sm"):
+    for model in ("en_core_web_md", "en_core_web_sm"):
         try:
             nlp = spacy.load(model)
             _MODEL_CACHE["nlp"] = nlp
@@ -105,4 +105,4 @@ def load_spacy_model():
             return nlp
         except OSError:
             continue
-    raise OSError("No spaCy model found (tried en_core_web_trf, en_core_web_md, en_core_web_sm)")
+    raise OSError("No spaCy model found (tried en_core_web_md, en_core_web_sm)")
