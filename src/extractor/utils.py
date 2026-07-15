@@ -89,14 +89,40 @@ def parse_json_field(raw: str) -> list[dict] | dict | None:
 _MODEL_CACHE = {}
 
 
+def _patch_catalogue_entry_points():
+    """Patch catalogue.Registry.get_entry_points to handle ImportError gracefully.
+
+    Fixes curated-tokenizers ABI crash on Streamlit Cloud (undefined symbol).
+    The orphaned curated-tokenizers package was left behind after removing
+    en_core_web_trf from requirements.txt; its .so raises ImportError on load.
+    """
+    try:
+        import catalogue
+        original = catalogue.Registry.get_entry_points
+        if getattr(original, "_patched", False):
+            return
+
+        def _safe_get_entry_points(self):
+            result = {}
+            for entry_point in self._get_entry_points():
+                try:
+                    result[entry_point.name] = entry_point.load()
+                except ImportError:
+                    continue
+            return result
+
+        _safe_get_entry_points._patched = True
+        catalogue.Registry.get_entry_points = _safe_get_entry_points
+    except Exception:
+        pass
+
+
 def load_spacy_model():
-    """Load the best available spaCy model with fallback chain: trf → md → sm."""
+    """Load the best available spaCy model with fallback chain: md -> sm."""
     if "nlp" in _MODEL_CACHE:
         return _MODEL_CACHE["nlp"]
-    try:
-        import spacy
-    except ImportError:
-        raise ImportError("spacy is required")
+    _patch_catalogue_entry_points()
+    import spacy
     for model in ("en_core_web_md", "en_core_web_sm"):
         try:
             nlp = spacy.load(model)
