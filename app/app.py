@@ -1,9 +1,9 @@
-﻿"""
-Streamlit V1 ÔÇö CV Evaluator & Classifier
+"""
+Streamlit V1 — CV Evaluator & Classifier
 
-Upload a CV (PDF/DOCX/TXT) ÔåÆ parse ÔåÆ extract ÔåÆ score (rubric)
-ÔåÆ classify (ML: TF-IDF + XGBoost) ÔåÆ suggest improvements
-ÔåÆ Compare rubric vs ML labels
+Upload a CV (PDF/DOCX/TXT) → parse → extract → score (rubric)
+→ classify (ML: TF-IDF + XGBoost) → suggest improvements
+→ Compare rubric vs ML labels
 
 Usage:
     streamlit run app/app.py
@@ -26,7 +26,7 @@ import pandas as pd
 
 st.set_page_config(
     page_title="CV Evaluator",
-    page_icon="­ƒôä",
+    page_icon="\U0001F4C4",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -42,7 +42,7 @@ LABEL_COLORS = {
     "Weak": "#b91c1c",
 }
 
-LABEL_EMOJIS = {"Strong": "­ƒƒó", "Average": "­ƒƒá", "Weak": "­ƒö┤"}
+LABEL_EMOJIS = {"Strong": "\U0001F7E2", "Average": "\U0001F7E0", "Weak": "\U0001F534"}
 
 
 @st.cache_resource
@@ -57,7 +57,7 @@ def load_classifier():
 
 @st.cache_resource
 def ensure_spacy_model():
-    """Ensure en_core_web_sm is available ÔÇö download if missing."""
+    """Ensure en_core_web_sm is available — download if missing."""
     try:
         import spacy
         try:
@@ -120,8 +120,8 @@ def render_metric_card(title, value, subtitle, color):
     )
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-st.title("­ƒôä CV Evaluator & Quality Classifier")
+# ==========================================
+st.title("\U0001F4C4 CV Evaluator & Quality Classifier")
 st.markdown(
     "Upload a CV to extract information, score against a rubric, "
     "and classify quality using both **rule-based scoring** and **ML text classification**."
@@ -132,11 +132,11 @@ with st.sidebar:
     st.markdown(
         """
         **Techniques:**
-        - **NER** ÔÇö spaCy EntityRuler + PhraseMatcher
-        - **Info Extraction** ÔÇö rule-based section parsers
-        - **Keyword Extraction** ÔÇö skill taxonomy
-        - **Text Classification** ÔÇö TF-IDF + XGBoost
-        - **Semantic Similarity** ÔÇö *(V2)*
+        - **NER** — spaCy EntityRuler + PhraseMatcher
+        - **Info Extraction** — rule-based section parsers
+        - **Keyword Extraction** — skill taxonomy
+        - **Text Classification** — TF-IDF + XGBoost
+        - **Semantic Similarity** — *(V2)*
         """
     )
     st.divider()
@@ -149,7 +149,7 @@ with st.sidebar:
         st.warning("No ML model found. Train with `scripts/vectorize_cvs.py` first.")
 
     rubric_config = load_rubric_config()
-    with st.expander("ÔÜÖ´©Å Rubric Weights", expanded=False):
+    with st.expander("\u2699\uFE0F Rubric Weights", expanded=False):
         for section, cfg in rubric_config.items():
             if isinstance(cfg, dict) and "max_points" in cfg:
                 st.caption(f"{section}: {cfg['max_points']} pts")
@@ -198,7 +198,7 @@ if uploaded_file is not None:
     rubric_label = cv.get("label", "Unknown")
 
     st.divider()
-    st.subheader("­ƒôè Results")
+    st.subheader("\U0001F4CA Results")
 
     kpi_cols = st.columns(3)
     with kpi_cols[0]:
@@ -215,7 +215,7 @@ if uploaded_file is not None:
                 conf_str = f"Confidence: {ml_proba[idx]:.1%}"
             render_metric_card("ML CLASSIFICATION", ml_label, conf_str, ml_color)
         else:
-            render_metric_card("ML CLASSIFICATION", "ÔÇö", "No model", "#888")
+            render_metric_card("ML CLASSIFICATION", "\u2014", "No model", "#888")
     with kpi_cols[2]:
         if ml_label:
             if rubric_label == ml_label:
@@ -223,7 +223,7 @@ if uploaded_file is not None:
                     "<div style='border:1px solid #15803d; border-radius:0.75rem; "
                     "padding:1.25rem; text-align:center; background:#f0fdf4;'>"
                     "<div style='font-size:0.8rem; color:#6b7280;'>AGREEMENT</div>"
-                    "<div style='font-size:2.2rem;'>Ô£à</div>"
+                    "<div style='font-size:2.2rem;'>\u2705</div>"
                     "<div style='font-size:0.85rem; color:#15803d;'>Rubric & ML agree</div></div>",
                     unsafe_allow_html=True
                 )
@@ -232,16 +232,16 @@ if uploaded_file is not None:
                     f"<div style='border:1px solid #b45309; border-radius:0.75rem; "
                     f"padding:1.25rem; text-align:center; background:#fffbeb;'>"
                     f"<div style='font-size:0.8rem; color:#6b7280;'>AGREEMENT</div>"
-                    f"<div style='font-size:2.2rem;'>ÔÜá´©Å</div>"
+                    f"<div style='font-size:2.2rem;'>\u26A0\uFE0F</div>"
                     f"<div style='font-size:0.85rem; color:#b45309;'>Rubric: {rubric_label}<br>ML: {ml_label}</div></div>",
                     unsafe_allow_html=True
                 )
         else:
-            render_metric_card("AGREEMENT", "ÔÇö", "No ML model", "#888")
+            render_metric_card("AGREEMENT", "\u2014", "No ML model", "#888")
 
     # Section breakdown with progress bars
     st.divider()
-    st.subheader("­ƒôê Section Scores")
+    st.subheader("\U0001F4C8 Section Scores")
     section_scores = cv.get("section_scores", {})
     score_data = []
     for section, score in section_scores.items():
@@ -261,7 +261,7 @@ if uploaded_file is not None:
 
     # Candidate details
     st.divider()
-    tabs = st.tabs(["­ƒôï Extracted Data", "­ƒÆí Suggestions", "­ƒôØ Raw Text"])
+    tabs = st.tabs(["\U0001F4CB Extracted Data", "\U0001F4A1 Suggestions", "\U0001F4DD Raw Text"])
 
     with tabs[0]:
         col_a, col_b = st.columns(2)
@@ -300,7 +300,7 @@ if uploaded_file is not None:
     st.divider()
     cv_json = json.dumps(cv, indent=2, default=str)
     st.download_button(
-        label="­ƒôÑ Download Full Analysis (JSON)",
+        label="\U0001F4E5 Download Full Analysis (JSON)",
         data=cv_json,
         file_name=f"{uploaded_file.name}_analysis.json",
         mime="application/json",
@@ -312,10 +312,10 @@ else:
         """
         ---
         **Pipeline:**
-        1. **Parse** ÔÇö extract text from PDF/DOCX/TXT
-        2. **Extract** ÔÇö NER + rule-based extraction of skills, experience, education, projects
-        3. **Score** ÔÇö weighted rubric (0-100) ÔåÆ label (Strong/Average/Weak)
-        4. **Classify** ÔÇö TF-IDF + XGBoost on raw text (ML-based label)
-        5. **Suggest** ÔÇö targeted improvement tips per section
+        1. **Parse** — extract text from PDF/DOCX/TXT
+        2. **Extract** — NER + rule-based extraction of skills, experience, education, projects
+        3. **Score** — weighted rubric (0-100) → label (Strong/Average/Weak)
+        4. **Classify** — TF-IDF + XGBoost on raw text (ML-based label)
+        5. **Suggest** — targeted improvement tips per section
         """
     )

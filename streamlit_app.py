@@ -1,4 +1,4 @@
-﻿"""Entry point for Streamlit Cloud ÔÇö delegates to app/app.py with error handling"""
+"""Entry point for Streamlit Cloud ÔÇö delegates to app/app.py with error handling"""
 import sys
 import traceback
 
