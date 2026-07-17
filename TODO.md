@@ -9,7 +9,11 @@ Last updated: 2026-07-17 | App: `streamlit run app/app.py` | Tests: 343 passing
 **Week 6 — JD Matching & Ranking (V2)**
 Add job description matching, semantic similarity, skill overlap, and CV ranking to the Streamlit app.
 
-**Deployment:** Streamlit Community Cloud — **DOWN (OOM)**. 1GB RAM insufficient for torch + easyocr + spaCy + XGBoost. App runs locally with `streamlit run app/app.py`.
+**Deployment:** Streamlit Community Cloud (https://cvinsight-io.streamlit.app) — **running**
+- Text PDF, DOCX, TXT — working
+- Scanned/image-based PDFs — crashes (easyocr + torch exceed 1GB RAM)
+- 1GB RAM insufficient for torch + easyocr in subprocess during scanned PDF OCR
+- Fix: migrate to Docker host (Render.com/Railway) for system-package OCR, or drop easyocr
 
 ---
 

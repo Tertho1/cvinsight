@@ -2,7 +2,7 @@
 
 **Generated:** July 17, 2026  
 **Git:** https://github.com/Tertho1/cvinsight  
-**Deployment:** Streamlit Community Cloud — **DOWN (OOM)**, runs locally with `streamlit run app/app.py`  
+**Deployment:** Streamlit Community Cloud (https://cvinsight-io.streamlit.app) — **running**, all features work except scanned PDFs  
 **Python:** 3.14.6 (Cloud) / 3.14.3 (local)  
 **Overall Completion:** ~98% (code), 0% (deployment)
 
@@ -153,21 +153,20 @@ Complete Streamlit UI rewrite in `app/app.py`:
 | Clear state | Sidebar button only | Top-right "Clear All" button + sidebar "Clear History" |
 | Sidebar model info | Text only | Card with green checkmark + "Online" indicator + help widget |
 
-### Deployment Status — CRITICAL FAILURE (2026-07-17)
+### Deployment Status — Scanned PDF Only Issue
 
-**Problem**: Streamlit Community Cloud free tier has 1 GB RAM limit. Loading torch (CUDA, ~800MB) + easyocr + spaCy + XGBoost + matplotlib simultaneously causes OOM kill. The process crashes silently — no Python traceback, generic "Oh no" error, `connection reset by peer` on health check endpoint.
+**App is running**: Text PDF, DOCX, TXT all work correctly on Streamlit Cloud (https://cvinsight-io.streamlit.app).
 
-**Attempted fixes (all failed):**
-1. **CPU-only torch pin** (`--extra-index-url https://download.pytorch.org/whl/cpu`) → Changed uv dependency tree, downgraded packages (numpy 2.5.1→2.4.4), broke app startup differently
-2. **Removed packages.txt** → Was installing 68 apt packages (143MB), but removal alone didn't fix OOM
-3. **Full revert to working commit** → App code is identical to last working state, confirms issue is environmental (Cloud platform change or accumulated memory pressure)
+**Problem**: Scanned/image-based PDFs crash with OOM. When easyocr is triggered in the subprocess, it loads torch (CUDA, ~800MB) which exceeds the 1GB RAM limit. The subprocess gets OOM-killed, and the error propagates up.
 
-**Root cause**: The app worked briefly at initial deploy (19:51 July 16), but repeated redeployments + apt install + full pip reinstalls accumulated memory pressure. The 1GB RAM is fundamentally insufficient for all required libraries.
+**Attempted fixes (didn't work):**
+1. **CPU-only torch pin** → Changed uv dependency tree, downgraded packages (numpy 2.5.1→2.4.4), broke app startup on different versions
+2. **Removed packages.txt** → Was installing 68 apt packages wastefully, but not the root cause
+3. **Full revert** → Confirmed issue is torch memory in subprocess, not app code
 
-**Path forward**: Migrate to a Docker-capable host:
-- Render.com (512MB RAM but no CUDA overhead, Dockerfile → `apt-get tesseract`)
-- Railway.app (similar Docker support)
-- Alternative: Drop easyocr from Cloud deployment and accept no scanned PDF support
+**Path forward**: 
+- EasyOCR fallback removed from Cloud deploy (scanned PDFs get "Could not extract text" message)
+- For scanned PDF support: migrate to Docker host (Render.com/Railway) with system tesseract+poppler
 
 ### Deployment to Streamlit Community Cloud (2026-07-16) (HISTORICAL)
 
