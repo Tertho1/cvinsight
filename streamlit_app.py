@@ -4,7 +4,7 @@ import traceback
 import streamlit as st
 
 st.set_page_config(
-    page_title="CV Evaluator",
+    page_title="CV-Insight",
     page_icon="\U0001F4C4",
     layout="wide",
     initial_sidebar_state="expanded",

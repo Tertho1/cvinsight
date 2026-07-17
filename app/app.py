@@ -1,5 +1,5 @@
 """
-Streamlit V1 — CV Evaluator & Classifier
+Streamlit V1 — CV-Insight
 
 Upload a CV (PDF/DOCX/TXT) → parse → extract → score (rubric)
 → classify (ML: TF-IDF + XGBoost) → suggest improvements
@@ -315,7 +315,7 @@ def extract_key_strengths(cv, total_score):
 
 def main():
     st.set_page_config(
-        page_title="CV Evaluator",
+        page_title="CV-Insight",
         page_icon="\U0001F4C4",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -348,8 +348,8 @@ def main():
             f"<div style='display:flex; align-items:center; gap:0.75rem; margin-bottom:0.25rem;'>"
             f"<div style='font-size:2rem;'>&#128196;</div>"
             f"<div>"
-            f"<div style='font-size:1.8rem; font-weight:700;'>CV Evaluator</div>"
-            f"<div style='font-size:0.85rem; color:#6b7280;'>AI-Powered Analysis</div>"
+            f"<div style='font-size:1.8rem; font-weight:700;'>CV-Insight</div>"
+            f"<div style='font-size:0.85rem; color:#6b7280;'>AI-Powered CV Scorer & Job Description Matcher</div>"
             f"</div></div>",
             unsafe_allow_html=True,
         )
@@ -372,8 +372,8 @@ def main():
         st.markdown(
             f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;'>"
             f"<div style='font-size:1.5rem;'>&#128196;</div>"
-            f"<div><div style='font-weight:700;'>CV Evaluator</div>"
-            f"<div style='font-size:0.75rem; color:#6b7280;'>AI-Powered Analysis</div></div></div>",
+            f"<div><div style='font-weight:700;'>CV-Insight</div>"
+            f"<div style='font-size:0.75rem; color:#6b7280;'>AI-Powered CV Scorer & Job Description Matcher</div></div></div>",
             unsafe_allow_html=True,
         )
         st.divider()
