@@ -8,7 +8,9 @@ Upload a CV (PDF/DOCX/TXT) → parse → extract → score (rubric)
 Features:
 - Adjustable rubric weights per section
 - Structured tables for experience/education/projects
-- Processing stage indicators
+- Pipeline step visualization
+- Section mini-score-cards
+- Key strengths extraction
 - Session history (last 5 results)
 """
 
@@ -37,12 +39,24 @@ LR_PATH = os.path.join(MODELS_DIR, "lr_baseline.pkl")
 DEFAULT_RUBRIC_PATH = os.path.join(CONFIG_DIR, "rubric_config.json")
 MAX_FILE_MB = 50
 PARSE_TIMEOUT = 180
+PURPLE = "#6366F1"
+GREEN = "#10B981"
+
 
 LABEL_COLORS = {
-    "Strong": "#15803d",
+    "Strong": GREEN,
     "Average": "#b45309",
     "Weak": "#b91c1c",
 }
+
+
+def _section_color(score, max_pts):
+    pct = score / max_pts * 100 if max_pts > 0 else 0
+    if pct >= 70:
+        return GREEN
+    if pct >= 40:
+        return "#b45309"
+    return "#b91c1c"
 
 
 @st.cache_resource
@@ -181,18 +195,6 @@ def make_custom_config(base_config, custom_weights):
     return config
 
 
-def render_section_bar(section_name, score, max_pts):
-    pct = score / max_pts * 100 if max_pts > 0 else 0
-    color = "#15803d" if pct >= 70 else "#b45309" if pct >= 40 else "#b91c1c"
-    cols = st.columns([2, 6, 1])
-    cols[0].markdown(f"**{section_name}**")
-    cols[1].progress(pct / 100, text=" ")
-    cols[2].markdown(
-        f"<span style='color:{color};font-weight:600;'>{score:.0f}</span>/{max_pts:.0f}",
-        unsafe_allow_html=True,
-    )
-
-
 def render_metric_card(title, value, subtitle, color):
     st.markdown(
         f"""
@@ -222,6 +224,95 @@ def render_table(items, columns, caption):
         st.caption(f"Showing 10 of {len(items)} {caption}")
 
 
+def render_pipeline():
+    steps = [
+        ("\U0001F4E5", "Parse", "Text extraction"),
+        ("\U0001F50D", "Extract", "NER + rules"),
+        ("\U0001F3AF", "Score", "Rubric 0-100"),
+        ("\U0001F9EA", "Classify", "XGBoost ML"),
+        ("\U0001F4A1", "Suggest", "Improvement tips"),
+    ]
+    cols = st.columns([3, 1, 3, 1, 3, 1, 3, 1, 3])
+    for i, (icon, title, desc) in enumerate(steps):
+        idx = i * 2
+        with cols[idx]:
+            st.markdown(
+                f"<div style='text-align:center; padding:0.5rem 0.25rem;'>"
+                f"<div style='font-size:1.5rem;'>{icon}</div>"
+                f"<div style='font-weight:600; font-size:0.85rem; color:{PURPLE};'>{title}</div>"
+                f"<div style='font-size:0.7rem; color:#6b7280;'>{desc}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        if i < len(steps) - 1:
+            with cols[idx + 1]:
+                st.markdown(
+                    f"<div style='text-align:center; padding-top:1.25rem; "
+                    f"font-size:1.2rem; color:#d1d5db;'>&rarr;</div>",
+                    unsafe_allow_html=True,
+                )
+    st.markdown("---")
+
+
+def render_section_cards(section_scores, rubric_config, custom_weights):
+    cards_data = []
+    for section, score in section_scores.items():
+        cfg_entry = rubric_config.get(section, {})
+        if isinstance(cfg_entry, dict):
+            max_pts = custom_weights.get(section, cfg_entry.get("max_points", 100))
+        else:
+            max_pts = 100
+        color = _section_color(score, max_pts)
+        label = section.replace("_", " ").title()
+        cards_data.append((label, score, max_pts, color))
+
+    cols = st.columns(len(cards_data))
+    for col, (label, score, max_pts, color) in zip(cols, cards_data):
+        pct = score / max_pts * 100 if max_pts > 0 else 0
+        with col:
+            st.markdown(
+                f"<div style='border:1px solid #e5e7eb; border-radius:0.75rem; "
+                f"padding:1rem; text-align:center; background:white;'>"
+                f"<div style='font-size:0.75rem; color:#6b7280; margin-bottom:0.25rem;'>{label}</div>"
+                f"<div style='font-size:1.8rem; font-weight:700; color:{color};'>{score:.0f}</div>"
+                f"<div style='font-size:0.75rem; color:#9ca3af;'>/ {max_pts:.0f}</div>"
+                f"<div style='height:4px; background:#e5e7eb; border-radius:2px; "
+                f"margin-top:0.5rem;'>"
+                f"<div style='height:4px; width:{pct:.0f}%; background:{color}; "
+                f"border-radius:2px;'></div>"
+                f"</div></div>",
+                unsafe_allow_html=True,
+            )
+
+
+def extract_key_strengths(cv, total_score):
+    strengths = []
+    skills = cv.get("skills", [])
+    if len(skills) >= 5:
+        strengths.append(f"Strong skill set ({len(skills)} skills matched)")
+    exp_count = len(cv.get("experience", []))
+    if exp_count >= 2:
+        strengths.append(f"Solid work history ({exp_count} positions)")
+    elif exp_count >= 1:
+        strengths.append("Relevant work experience")
+    edu = cv.get("education", [])
+    if edu:
+        top_deg = edu[0].get("degree", "")
+        if any(k in top_deg.lower() for k in ["bachelor", "master", "phd", "b.tech", "m.tech"]):
+            strengths.append(f"Good education background ({top_deg})")
+    if cv.get("projects"):
+        strengths.append(f"{len(cv['projects'])} projects demonstrated")
+    if cv.get("certifications"):
+        strengths.append(f"{len(cv['certifications'])} certifications")
+    if cv.get("languages"):
+        strengths.append(f"Multilingual ({len(cv['languages'])} languages)")
+    if total_score >= 70:
+        strengths.append("Well-structured CV with clear achievements")
+    if not strengths:
+        strengths.append("CV parsed successfully")
+    return strengths
+
+
 def main():
     st.set_page_config(
         page_title="CV Evaluator",
@@ -230,67 +321,149 @@ def main():
         initial_sidebar_state="expanded",
     )
 
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{ font-family: system-ui, -apple-system, sans-serif; }}
+        .upload-area {{
+            border: 2px dashed #d1d5db; border-radius: 1rem;
+            padding: 2rem; text-align: center; background: #fafafa;
+            transition: border-color 0.2s;
+        }}
+        .upload-area:hover {{ border-color: {PURPLE}; }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     if "history" not in st.session_state:
         st.session_state.history = []
+    if "cv_cache" not in st.session_state:
+        st.session_state.cv_cache = None
 
-    st.title("\U0001F4C4 CV Evaluator & Quality Classifier")
+    # --- Top bar ---
+    top_cols = st.columns([6, 1])
+    with top_cols[0]:
+        st.markdown(
+            f"<div style='display:flex; align-items:center; gap:0.75rem; margin-bottom:0.25rem;'>"
+            f"<div style='font-size:2rem;'>&#128196;</div>"
+            f"<div>"
+            f"<div style='font-size:1.8rem; font-weight:700;'>CV Evaluator</div>"
+            f"<div style='font-size:0.85rem; color:#6b7280;'>AI-Powered Analysis</div>"
+            f"</div></div>",
+            unsafe_allow_html=True,
+        )
+    with top_cols[1]:
+        if st.button("\U0001F5D1 Clear All", type="secondary"):
+            st.session_state.history = []
+            st.session_state.cv_cache = None
+            st.rerun()
+
     st.markdown(
         "Upload a CV to extract information, score against **customizable rubric weights**, "
         "and classify quality using both rule-based scoring and ML text classification."
     )
 
+    # --- Sidebar ---
     rubric_config = load_rubric_config()
     default_weights = load_default_weights(rubric_config)
 
     with st.sidebar:
-        st.header("\u2699\uFE0F Customize Rubric")
-        st.caption("Adjust section weights to match your hiring priorities. Total must not exceed 100.")
+        st.markdown(
+            f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;'>"
+            f"<div style='font-size:1.5rem;'>&#128196;</div>"
+            f"<div><div style='font-weight:700;'>CV Evaluator</div>"
+            f"<div style='font-size:0.75rem; color:#6b7280;'>AI-Powered Analysis</div></div></div>",
+            unsafe_allow_html=True,
+        )
+        st.divider()
+
+        model_pipeline, model_name = load_classifier()
+        if model_pipeline:
+            st.markdown(
+                f"<div style='border:1px solid #e5e7eb; border-radius:0.75rem; padding:1rem; "
+                f"background:white; margin-bottom:1rem;'>"
+                f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;'>"
+                f"<span style='color:{GREEN};'>&#10003;</span>"
+                f"<span style='font-weight:600;'>{model_name}</span>"
+                f"</div>"
+                f"<div style='display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; color:#6b7280;'>"
+                f"<span style='color:{GREEN}; font-size:0.6rem;'>&#9679;</span> Online"
+                f"</div></div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown(f"<div style='font-weight:600; color:{PURPLE}; margin-bottom:0.5rem;'>&#9881;&#65039; Rubric Weights</div>", unsafe_allow_html=True)
+        st.caption("Adjust to match your hiring priorities.")
 
         custom_weights = {}
         total = 0
         for section in sorted(default_weights.keys()):
             label = section.replace("_", " ").title()
             default = default_weights[section]
-            val = st.slider(
-                label, min_value=0, max_value=50,
-                value=default, key=f"w_{section}"
-            )
+            val = st.slider(label, min_value=0, max_value=50, value=default, key=f"w_{section}")
             custom_weights[section] = val
             total += val
 
         st.caption(f"**Total: {total}/100**")
         if total != 100:
-            st.warning(f"Weights sum to {total}, not 100. Scores will be relative.", icon="\u26A0\uFE0F")
+            st.warning(f"Weights sum to {total}, not 100.", icon="\u26A0\uFE0F")
 
         use_custom_weights = st.checkbox("Apply custom weights", value=(total != 100))
 
         st.divider()
-        st.header("About")
         st.markdown(
-            "**Techniques:**  \n"
-            "- **NER** — spaCy EntityRuler + PhraseMatcher  \n"
-            "- **Info Extraction** — rule-based section parsers  \n"
-            "- **Keyword Extraction** — skill taxonomy  \n"
-            "- **Text Classification** — TF-IDF + XGBoost  \n"
-            "- **Semantic Similarity** — *(V2)*"
+            f"<div style='border:1px solid #ede9fe; border-radius:0.75rem; padding:0.75rem; "
+            f"background:#f5f3ff; font-size:0.85rem;'>"
+            f"<div style='font-weight:600; margin-bottom:0.25rem;'>Need help?</div>"
+            f"<div style='color:#6b7280; margin-bottom:0.5rem;'>Upload a CV and get instant analysis.</div>"
+            f"<a href='#' style='color:{PURPLE}; text-decoration:none; font-weight:500;'>Check our guide &rarr;</a>"
+            f"</div>",
+            unsafe_allow_html=True,
         )
-        st.divider()
-        model_pipeline, model_name = load_classifier()
-        if model_pipeline:
-            st.success(f"ML model: **{model_name}**")
-        else:
-            st.warning("No ML model found.")
 
         if st.button("\U0001F5D1 Clear History"):
             st.session_state.history = []
             st.rerun()
 
-    uploaded_file = st.file_uploader(
-        "Upload CV",
-        type=["pdf", "docx", "txt"],
-        help="PDF, DOCX, or plain text"
-    )
+    # --- Upload + Tips ---
+    upload_col, tips_col = st.columns([3, 1])
 
+    with upload_col:
+        st.markdown(
+            f"<div class='upload-area'>"
+            f"<div style='font-size:3rem; color:{PURPLE}; margin-bottom:0.5rem;'>&#11014;&#65039;</div>"
+            f"<div style='font-weight:600; font-size:1.1rem; margin-bottom:0.25rem;'>"
+            f"Drag & drop your CV here</div>"
+            f"<div style='font-size:0.85rem; color:#6b7280; margin-bottom:1rem;'>"
+            f"PDF, DOCX, TXT up to 50 MB</div>",
+            unsafe_allow_html=True,
+        )
+        uploaded_file = st.file_uploader(
+            "Choose file", type=["pdf", "docx", "txt"],
+            label_visibility="collapsed",
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with tips_col:
+        st.markdown(
+            f"<div style='border:1px solid #ede9fe; border-radius:0.75rem; padding:1rem; "
+            f"background:#f5f3ff; height:100%;'>"
+            f"<div style='font-weight:600; font-size:0.9rem; margin-bottom:0.5rem;'>"
+            f"Tips for Best Results</div>"
+            f"<div style='font-size:0.8rem; color:#374151; line-height:1.8;'>"
+            f"&#10003; Use a clear, updated CV<br>"
+            f"&#10003; Ensure sections are well-structured<br>"
+            f"&#10003; Include measurable achievements<br>"
+            f"&#10003; Save as PDF for best accuracy"
+            f"</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    # --- Pipeline visualization ---
+    render_pipeline()
+
+    # --- Processing ---
     if uploaded_file is not None:
         file_size_mb = uploaded_file.size / (1024 * 1024)
         if file_size_mb > MAX_FILE_MB:
@@ -349,11 +522,28 @@ def main():
         os.unlink(tmp_path)
         status.update(label="Complete!", state="complete", expanded=False)
 
+        st.session_state.cv_cache = {
+            "raw_text": raw_text,
+            "cv": cv,
+            "suggestions": suggestions,
+            "ml_label": ml_label,
+            "ml_proba": ml_proba,
+        }
+
+    # --- Results (from cache or fresh) ---
+    if st.session_state.cv_cache is not None:
+        cache = st.session_state.cv_cache
+        raw_text = cache["raw_text"]
+        cv = cache["cv"]
+        suggestions = cache["suggestions"]
+        ml_label = cache["ml_label"]
+        ml_proba = cache["ml_proba"]
+
         total_score = cv.get("total_score", 0)
         rubric_label = cv.get("label", "Unknown")
 
         entry = {
-            "filename": uploaded_file.name,
+            "filename": uploaded_file.name if uploaded_file else "N/A",
             "total_score": total_score,
             "rubric_label": rubric_label,
             "ml_label": ml_label,
@@ -361,9 +551,8 @@ def main():
         st.session_state.history.insert(0, entry)
         st.session_state.history = st.session_state.history[:5]
 
-        st.divider()
+        # --- KPI row ---
         st.subheader("\U0001F4CA Results")
-
         kpi_cols = st.columns(3)
         with kpi_cols[0]:
             render_metric_card(
@@ -383,34 +572,27 @@ def main():
             else:
                 render_metric_card("ML CLASSIFICATION", "\u2014", "No model", "#888")
         with kpi_cols[2]:
-            if ml_label:
-                agree = rubric_label == ml_label
-                border = "#15803d" if agree else "#b45309"
-                bg = "#f0fdf4" if agree else "#fffbeb"
-                icon = "\u2705" if agree else "\u26A0\uFE0F"
-                sub = "Rubric & ML agree" if agree else f"Rubric: {rubric_label} / ML: {ml_label}"
-                st.markdown(
-                    f"<div style='border:1px solid {border}; border-radius:0.75rem; "
-                    f"padding:1.25rem; text-align:center; background:{bg};'>"
-                    f"<div style='font-size:0.8rem; color:#6b7280;'>AGREEMENT</div>"
-                    f"<div style='font-size:2.2rem;'>{icon}</div>"
-                    f"<div style='font-size:0.85rem; color:{border};'>{sub}</div></div>",
-                    unsafe_allow_html=True,
+            strengths = extract_key_strengths(cv, total_score)
+            st.markdown(
+                f"<div style='border:1px solid #e5e7eb; border-radius:0.75rem; padding:1rem; "
+                f"background:white; height:100%;'>"
+                f"<div style='font-size:0.8rem; color:#6b7280; margin-bottom:0.5rem;'>KEY STRENGTHS</div>"
+                + "".join(
+                    f"<div style='font-size:0.85rem; color:#374151; margin-bottom:0.25rem;'>"
+                    f"<span style='color:{GREEN};'>&#10003;</span> {s}</div>"
+                    for s in strengths[:5]
                 )
-            else:
-                render_metric_card("AGREEMENT", "\u2014", "No ML model", "#888")
+                + "</div>",
+                unsafe_allow_html=True,
+            )
 
+        # --- Section score cards ---
         st.divider()
-        st.subheader("\U0001F4C8 Section Scores")
+        st.subheader("\U0001F4C8 Section Breakdown")
         section_scores = cv.get("section_scores", {})
-        for section, score in section_scores.items():
-            cfg_entry = rubric_config.get(section, {})
-            if isinstance(cfg_entry, dict):
-                max_pts = custom_weights.get(section, cfg_entry.get("max_points", 100))
-            else:
-                max_pts = 100
-            render_section_bar(section.replace("_", " ").title(), score, max_pts)
+        render_section_cards(section_scores, rubric_config, custom_weights)
 
+        # --- Tabs ---
         st.divider()
         tabs = st.tabs([
             "\U0001F4CB Extracted Data",
@@ -447,7 +629,8 @@ def main():
                     "projects"
                 )
                 if cv.get("certifications"):
-                    st.markdown(f"**Certifications:** {len(cv['certifications'])} — {', '.join(c['name'] for c in cv['certifications'][:5])}")
+                    certs = cv["certifications"]
+                    st.markdown(f"**Certifications ({len(certs)}):** {', '.join(c['name'] for c in certs[:5])}")
 
         with tabs[1]:
             if suggestions:
@@ -467,13 +650,15 @@ def main():
                 st.info("No previous analyses in this session.")
 
         st.divider()
-        cv_json = json.dumps(cv, indent=2, default=str)
-        st.download_button(
-            label="\U0001F4E5 Download Full Analysis (JSON)",
-            data=cv_json,
-            file_name=f"{uploaded_file.name}_analysis.json",
-            mime="application/json",
-        )
+        col_dl, _ = st.columns([1, 4])
+        with col_dl:
+            cv_json = json.dumps(cv, indent=2, default=str)
+            st.download_button(
+                label="\U0001F4E5 Download Full Analysis (JSON)",
+                data=cv_json,
+                file_name=f"{uploaded_file.name}_analysis.json",
+                mime="application/json",
+            )
 
     else:
         st.info("Upload a CV to begin analysis.")
@@ -483,22 +668,6 @@ def main():
             st.subheader("\U0001F4CA Session History")
             hist_df = pd.DataFrame(st.session_state.history)
             st.dataframe(hist_df, use_container_width=True, hide_index=True)
-
-        st.markdown(
-            """
-            ---
-            **Pipeline:**
-            1. **Parse** — extract text from PDF/DOCX/TXT
-            2. **Extract** — NER + rule-based extraction of skills, experience, education, projects
-            3. **Score** — weighted rubric (0-100) → label (Strong/Average/Weak)
-            4. **Classify** — TF-IDF + XGBoost on raw text (ML-based label)
-            5. **Suggest** — targeted improvement tips per section
-
-            ---
-            **Custom Rubric:** Adjust section weights in the sidebar to match your
-            company's hiring priorities before uploading.
-            """
-        )
 
 
 if __name__ == "__main__":

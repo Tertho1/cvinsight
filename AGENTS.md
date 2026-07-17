@@ -138,7 +138,8 @@ Pydantic model with nested models (Education, Experience, Project, Certification
 - **Tests required** for new modules (scorer, suggester, matcher, app)
 - **Config-driven** — scoring weights live in `rubric_config.json`, not hardcoded
 - **Schema-first** — all modules read/write `CVSchema`
-- **Commit discipline** — only commit when asked; use descriptive messages
-- **No code pushes** to GitHub without explicit user approval
+- **Commit discipline** — only commit when explicitly asked; use descriptive messages
+- **CRITICAL: No code pushes to GitHub** without explicit user approval — test locally first, demo changes in-session. User will say "push" when ready.
 - **No comments** in code unless necessary for clarity
 - **Mark progress** in `TODO.md` and `progress.md` after completing tasks
+- **Streamlit Cloud deploy**: currently DOWN (OOM, 1GB RAM insufficient for torch + easyocr). Migrate to Render.com/Railway before attempting redeploy.
