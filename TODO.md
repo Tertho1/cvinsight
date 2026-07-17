@@ -1,8 +1,23 @@
 # TODO — CV-Insight
 
-Last updated: 2026-07-17 | App: `streamlit run app/app.py` | Tests: 343 passing
+Last updated: 2026-07-18 | App: `streamlit run app/app.py` | Tests: 361 passing
 
 ---
+
+## Recent Improvements (2026-07-18)
+
+- [x] **`src/matcher/embedder.py`** — lazy-loaded `multi-qa-MiniLM-L6-cos-v1`, added `embed_texts()` batch method
+- [x] **`src/matcher/semantic_scorer.py`** — cosine similarity with empty-text guards
+- [x] **`src/matcher/skill_overlap.py`** — refactored to reuse `extract_skills()` from skill_extractor, no duplicate taxonomy logic
+- [x] **`src/matcher/ranker.py`** — added `_cv_to_text()` fallback, `match_cv()` accepts `cv=` dict
+- [x] **18 matcher tests** — all passing
+- [x] **`notebooks/matching_eval.ipynb`** — Spearman ρ evaluation vs HF `0xnbk/resume-ats-score-v1-en`
+- [x] **JD matching in app** — JD text area beside upload, match % KPI card, `JD Match` tab with matched/missing skills
+- [x] **Theme-aware colors** — brighter purple/green/amber/red for light+dark contrast, no hardcoded white backgrounds
+- [x] **Clickable upload box** — native file_uploader overlaid with opacity 0, clicking the styled box opens file dialog
+- [x] **Auto-match on JD change** — no "Match" button, re-runs when JD text differs from last matched
+- [x] **All skills displayed** — scrollable text_area instead of truncated first-15
+- [x] **Borders** — 2–3px rgba(128,128,128,0.35) for visibility on both themes
 
 ## Current Priority
 
@@ -96,13 +111,14 @@ Hardware: RTX 5070 Ti (local inference & training).
 - [ ] **Phase 2**: Collect 200-500 Bangla CVs + translate → fine-tune mixed model
 - [ ] **Phase 3**: Native Bangla extraction via Onneshon/B-NER datasets
 
-### Week 6 — JD Matching & Ranking (V2)
+### Week 6 — JD Matching & Ranking (V2) ✅
 
-- [ ] `src/matcher/embedder.py` — sentence-transformer embedder
-- [ ] `src/matcher/semantic_scorer.py` — cosine similarity CV vs JD
-- [ ] `src/matcher/skill_overlap.py` — skill overlap + missing skills
-- [ ] `src/matcher/ranker.py` — ranking formula
-- [ ] Streamlit V2 with JD matching + ranking tab
+- [x] `src/matcher/embedder.py` — sentence-transformer embedder
+- [x] `src/matcher/semantic_scorer.py` — cosine similarity CV vs JD
+- [x] `src/matcher/skill_overlap.py` — skill overlap + missing skills
+- [x] `src/matcher/ranker.py` — ranking formula with _cv_to_text fallback
+- [x] Streamlit integration — JD text area, match KPI, JD Match tab
+- [x] 18 tests, evaluation notebook
 
 ### Week 7 — Fine-Tuning & Final Report
 
@@ -110,7 +126,8 @@ Hardware: RTX 5070 Ti (local inference & training).
 - [ ] Bangla CV support evaluation
 - [ ] Side-by-side eval: rule-based vs fine-tuned LLM
 - [ ] Side-by-side eval: rubric classifier vs TF-IDF+XGBoost classifier
-- [ ] Full evaluation metrics (NER F1, classifier F1, NDCG@5, Spearman ρ)
+- [ ] Full evaluation metrics (NER F1, classifier F1, Spearman ρ, NDCG@5)
+- [ ] Multi-CV ranking tab in Streamlit
 - [ ] Final report
 
 ---

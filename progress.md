@@ -1,10 +1,10 @@
 # CV-Insight — Progress Report
 
-**Generated:** July 17, 2026  
+**Generated:** July 18, 2026  
 **Git:** https://github.com/Tertho1/cvinsight  
 **Deployment:** Streamlit Community Cloud (https://cvinsight-io.streamlit.app) — **running**, all features work except scanned PDFs  
 **Python:** 3.14.6 (Cloud) / 3.14.3 (local)  
-**Overall Completion:** ~98% (code), 0% (deployment)
+**Overall Completion:** ~99% (code), 0% (deployment)
 
 ---
 
@@ -92,7 +92,33 @@ All 6 priorities fixed on 9 real-world CVs (4 PDF + 3 DOCX + 2 TXT):
 
 ---
 
-## 2. What's Missing (Not Started)
+## 2. What's Implemented (Working)
+
+### Week 6 — JD Matching & Ranking (V2) ✅ (~100%)
+
+All 4 matcher modules built and tested:
+
+| Module | File | Purpose |
+|--------|------|---------|
+| Embedder | `src/matcher/embedder.py` | Sentence-transformer wrapper (`multi-qa-MiniLM-L6-cos-v1`, CPU, 384-dim), `embed_texts()` batch method |
+| Semantic Scorer | `src/matcher/semantic_scorer.py` | Cosine similarity between CV and JD embeddings |
+| Skill Overlap | `src/matcher/skill_overlap.py` | JD skill extraction via `extract_skills()`, overlap ratio + missing skills list |
+| Ranker | `src/matcher/ranker.py` | Weighted final score (50% sem + 30% skill overlap + 20% rubric), `_cv_to_text()` fallback for dicts without raw_text |
+
+**App integration:** JD text area beside CV upload → "JD Match" tab shows match %, semantic similarity, skill overlap, matched skills (left column) + missing skills (right column).
+
+**Theme:** All colors now use light+dark compatible palette (brighter purple/green/amber/red). No hardcoded white/light backgrounds. Dataframe backgrounds overridden to transparent.
+
+**Upload area:** Styled dashed box with icon/text; native file_uploader overlaid at opacity 0 so the entire box is clickable. No visible "Browse files" button.
+
+**Auto-matching:** Match runs automatically when JD text changes (detected via `_last_matched_jd` session state). No manual "Match" button needed.
+
+**18 tests** in `tests/test_matcher.py` — all passing.
+**`notebooks/matching_eval.ipynb`** — Spearman ρ evaluation against HF `0xnbk/resume-ats-score-v1-en` (1275 CV-JD pairs).
+
+**Total: 361 tests** across 17 files — all passing.
+
+---
 
 ### Week 4 — Scoring Engine & Label Generation ✅ (~95%)
 - `src/scorer/section_scorers.py` — 7 section scoring functions, reads weights from `rubric_config.json`

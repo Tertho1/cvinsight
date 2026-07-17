@@ -39,14 +39,17 @@ LR_PATH = os.path.join(MODELS_DIR, "lr_baseline.pkl")
 DEFAULT_RUBRIC_PATH = os.path.join(CONFIG_DIR, "rubric_config.json")
 MAX_FILE_MB = 50
 PARSE_TIMEOUT = 180
-PURPLE = "#6366F1"
-GREEN = "#10B981"
+PURPLE = "#818cf8"
+GREEN = "#34d399"
+AMBER = "#fbbf24"
+RED = "#f87171"
+MUTED = "#9ca3af"
 
 
 LABEL_COLORS = {
     "Strong": GREEN,
-    "Average": "#b45309",
-    "Weak": "#b91c1c",
+    "Average": AMBER,
+    "Weak": RED,
 }
 
 
@@ -55,8 +58,8 @@ def _section_color(score, max_pts):
     if pct >= 70:
         return GREEN
     if pct >= 40:
-        return "#b45309"
-    return "#b91c1c"
+        return AMBER
+    return RED
 
 
 @st.cache_resource
@@ -195,14 +198,17 @@ def make_custom_config(base_config, custom_weights):
     return config
 
 
+BORDER = "2px solid rgba(128,128,128,0.35)"
+
+
 def render_metric_card(title, value, subtitle, color):
     st.markdown(
         f"""
-        <div style="border:1px solid #e5e7eb; border-radius:0.75rem; padding:1.25rem;
-                    text-align:center; background:white;">
-            <div style="font-size:0.8rem; color:#6b7280; margin-bottom:0.25rem;">{title}</div>
+        <div style="border:{BORDER}; border-radius:0.75rem; padding:1.25rem;
+                    text-align:center;">
+            <div style="font-size:0.8rem; color:{MUTED}; margin-bottom:0.25rem;">{title}</div>
             <div style="font-size:2.2rem; font-weight:700; color:{color};">{value}</div>
-            <div style="font-size:0.85rem; color:#6b7280; margin-top:0.25rem;">{subtitle}</div>
+            <div style="font-size:0.85rem; color:{MUTED}; margin-top:0.25rem;">{subtitle}</div>
         </div>
         """, unsafe_allow_html=True
     )
@@ -240,7 +246,7 @@ def render_pipeline():
                 f"<div style='text-align:center; padding:0.5rem 0.25rem;'>"
                 f"<div style='font-size:1.5rem;'>{icon}</div>"
                 f"<div style='font-weight:600; font-size:0.85rem; color:{PURPLE};'>{title}</div>"
-                f"<div style='font-size:0.7rem; color:#6b7280;'>{desc}</div>"
+                f"<div style='font-size:0.7rem; color:{MUTED};'>{desc}</div>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -248,7 +254,7 @@ def render_pipeline():
             with cols[idx + 1]:
                 st.markdown(
                     f"<div style='text-align:center; padding-top:1.25rem; "
-                    f"font-size:1.2rem; color:#d1d5db;'>&rarr;</div>",
+                    f"font-size:1.2rem; color:{MUTED};'>&rarr;</div>",
                     unsafe_allow_html=True,
                 )
     st.markdown("---")
@@ -271,12 +277,12 @@ def render_section_cards(section_scores, rubric_config, custom_weights):
         pct = score / max_pts * 100 if max_pts > 0 else 0
         with col:
             st.markdown(
-                f"<div style='border:1px solid #e5e7eb; border-radius:0.75rem; "
-                f"padding:1rem; text-align:center; background:white;'>"
-                f"<div style='font-size:0.75rem; color:#6b7280; margin-bottom:0.25rem;'>{label}</div>"
+                f"<div style='border:{BORDER}; border-radius:0.75rem; "
+                f"padding:1rem; text-align:center;'>"
+                f"<div style='font-size:0.75rem; color:{MUTED}; margin-bottom:0.25rem;'>{label}</div>"
                 f"<div style='font-size:1.8rem; font-weight:700; color:{color};'>{score:.0f}</div>"
-                f"<div style='font-size:0.75rem; color:#9ca3af;'>/ {max_pts:.0f}</div>"
-                f"<div style='height:4px; background:#e5e7eb; border-radius:2px; "
+                f"<div style='font-size:0.75rem; color:{MUTED};'>/ {max_pts:.0f}</div>"
+                f"<div style='height:4px; background:rgba(128,128,128,0.15); border-radius:2px; "
                 f"margin-top:0.5rem;'>"
                 f"<div style='height:4px; width:{pct:.0f}%; background:{color}; "
                 f"border-radius:2px;'></div>"
@@ -326,11 +332,33 @@ def main():
         <style>
         .stApp {{ font-family: system-ui, -apple-system, sans-serif; }}
         .upload-area {{
-            border: 2px dashed #d1d5db; border-radius: 1rem;
-            padding: 2rem; text-align: center; background: #fafafa;
+            border: 3px dashed rgba(128,128,128,0.35); border-radius: 1rem;
+            padding: 2rem 1rem; text-align: center;
             transition: border-color 0.2s;
+            position: relative;
         }}
         .upload-area:hover {{ border-color: {PURPLE}; }}
+        .upload-area > [data-testid="stFileUploader"] {{
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            opacity: 0; cursor: pointer; z-index: 10;
+            font-size: 0; line-height: 0; height: 100%; width: 100%;
+        }}
+        .upload-area > [data-testid="stFileUploader"] > section {{
+            height: 100%; min-height: 100%; padding: 0; border: none;
+        }}
+        .jd-box {{
+            border: 2px solid rgba(128,128,128,0.35); border-radius: 0.75rem;
+            padding: 1.25rem;
+        }}
+        [data-testid="stDataFrame"] > div {{
+            background: transparent !important;
+        }}
+        [data-testid="stDataFrame"] table {{
+            background: transparent !important;
+        }}
+        div.stFileUploaderFile {{
+            display: none !important;
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -349,7 +377,7 @@ def main():
             f"<div style='font-size:2rem;'>&#128196;</div>"
             f"<div>"
             f"<div style='font-size:1.8rem; font-weight:700;'>CV-Insight</div>"
-            f"<div style='font-size:0.85rem; color:#6b7280;'>AI-Powered CV Scorer & Job Description Matcher</div>"
+            f"<div style='font-size:0.85rem; color:{MUTED};'>AI-Powered CV Scorer & Job Description Matcher</div>"
             f"</div></div>",
             unsafe_allow_html=True,
         )
@@ -373,7 +401,7 @@ def main():
             f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;'>"
             f"<div style='font-size:1.5rem;'>&#128196;</div>"
             f"<div><div style='font-weight:700;'>CV-Insight</div>"
-            f"<div style='font-size:0.75rem; color:#6b7280;'>AI-Powered CV Scorer & Job Description Matcher</div></div></div>",
+            f"<div style='font-size:0.75rem; color:{MUTED};'>AI-Powered CV Scorer & Job Description Matcher</div></div></div>",
             unsafe_allow_html=True,
         )
         st.divider()
@@ -381,13 +409,13 @@ def main():
         model_pipeline, model_name = load_classifier()
         if model_pipeline:
             st.markdown(
-                f"<div style='border:1px solid #e5e7eb; border-radius:0.75rem; padding:1rem; "
-                f"background:white; margin-bottom:1rem;'>"
+                f"<div style='border:{BORDER}; border-radius:0.75rem; padding:1rem; "
+                f"margin-bottom:1rem;'>"
                 f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;'>"
                 f"<span style='color:{GREEN};'>&#10003;</span>"
                 f"<span style='font-weight:600;'>{model_name}</span>"
                 f"</div>"
-                f"<div style='display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; color:#6b7280;'>"
+                f"<div style='display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; color:{MUTED};'>"
                 f"<span style='color:{GREEN}; font-size:0.6rem;'>&#9679;</span> Online"
                 f"</div></div>",
                 unsafe_allow_html=True,
@@ -413,10 +441,10 @@ def main():
 
         st.divider()
         st.markdown(
-            f"<div style='border:1px solid #ede9fe; border-radius:0.75rem; padding:0.75rem; "
-            f"background:#f5f3ff; font-size:0.85rem;'>"
+            f"<div style='border:{BORDER}; border-radius:0.75rem; padding:0.75rem; "
+            f"font-size:0.85rem;'>"
             f"<div style='font-weight:600; margin-bottom:0.25rem;'>Need help?</div>"
-            f"<div style='color:#6b7280; margin-bottom:0.5rem;'>Upload a CV and get instant analysis.</div>"
+            f"<div style='color:{MUTED}; margin-bottom:0.5rem;'>Upload a CV and get instant analysis.</div>"
             f"<a href='#' style='color:{PURPLE}; text-decoration:none; font-weight:500;'>Check our guide &rarr;</a>"
             f"</div>",
             unsafe_allow_html=True,
@@ -426,39 +454,45 @@ def main():
             st.session_state.history = []
             st.rerun()
 
-    # --- Upload + Tips ---
-    upload_col, tips_col = st.columns([3, 1])
+    # --- Upload + JD ---
+    jd_text = st.session_state.get("_jd_text", "")
+    upload_col, jd_col = st.columns([3, 2])
 
     with upload_col:
         st.markdown(
-            f"<div class='upload-area'>"
+            f"<div class='upload-area' id='upload-box'>"
             f"<div style='font-size:3rem; color:{PURPLE}; margin-bottom:0.5rem;'>&#11014;&#65039;</div>"
             f"<div style='font-weight:600; font-size:1.1rem; margin-bottom:0.25rem;'>"
-            f"Drag & drop your CV here</div>"
-            f"<div style='font-size:0.85rem; color:#6b7280; margin-bottom:1rem;'>"
+            f"Click or drag your CV here</div>"
+            f"<div style='font-size:0.85rem; color:{MUTED}; margin-bottom:1rem;'>"
             f"PDF, DOCX, TXT up to 50 MB</div>",
             unsafe_allow_html=True,
         )
         uploaded_file = st.file_uploader(
-            "Choose file", type=["pdf", "docx", "txt"],
+            "Upload CV", type=["pdf", "docx", "txt"],
             label_visibility="collapsed",
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    with tips_col:
+    with jd_col:
         st.markdown(
-            f"<div style='border:1px solid #ede9fe; border-radius:0.75rem; padding:1rem; "
-            f"background:#f5f3ff; height:100%;'>"
-            f"<div style='font-weight:600; font-size:0.9rem; margin-bottom:0.5rem;'>"
-            f"Tips for Best Results</div>"
-            f"<div style='font-size:0.8rem; color:#374151; line-height:1.8;'>"
-            f"&#10003; Use a clear, updated CV<br>"
-            f"&#10003; Ensure sections are well-structured<br>"
-            f"&#10003; Include measurable achievements<br>"
-            f"&#10003; Save as PDF for best accuracy"
-            f"</div></div>",
+            f"<div class='jd-box'>"
+            f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;'>"
+            f"<span style='font-size:1.3rem;'>&#128269;</span>"
+            f"<span style='font-weight:600;'>Job Description (optional)</span>"
+            f"</div>",
             unsafe_allow_html=True,
         )
+        jd_text = st.text_area(
+            "Paste the job description here for matching...",
+            value=jd_text,
+            height=130,
+            placeholder="e.g. Looking for a Python developer with Django and PostgreSQL experience...",
+            label_visibility="collapsed",
+            key="jd_input",
+        )
+        st.session_state["_jd_text"] = jd_text
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # --- Pipeline visualization ---
     render_pipeline()
@@ -519,6 +553,24 @@ def main():
             if model_pipeline:
                 ml_label, ml_proba = classify_text(model_pipeline, raw_text)
 
+            jd_match_result = None
+            if jd_text and jd_text.strip():
+                st.write("\U0001F4CB Matching against job description...")
+                try:
+                    from src.matcher.ranker import match_cv
+                    skills = cv.get("skills", [])
+                    raw_for_match = raw_text
+                    jd_match_result = match_cv(
+                        cv_text=raw_for_match,
+                        cv_skills=skills,
+                        jd_text=jd_text.strip(),
+                        rubric_score=cv.get("total_score", 0),
+                    )
+                    st.session_state["_last_matched_jd"] = jd_text.strip()
+                except Exception as e:
+                    st.warning(f"JD matching failed: {e}")
+                    jd_match_result = None
+
         os.unlink(tmp_path)
         status.update(label="Complete!", state="complete", expanded=False)
 
@@ -528,6 +580,7 @@ def main():
             "suggestions": suggestions,
             "ml_label": ml_label,
             "ml_proba": ml_proba,
+            "jd_match": jd_match_result,
         }
 
     # --- Results (from cache or fresh) ---
@@ -538,6 +591,22 @@ def main():
         suggestions = cache["suggestions"]
         ml_label = cache["ml_label"]
         ml_proba = cache["ml_proba"]
+        jd_match = cache.get("jd_match")
+
+        last_jd = st.session_state.get("_last_matched_jd", "")
+        if jd_text.strip() and jd_text.strip() != last_jd:
+            try:
+                from src.matcher.ranker import match_cv
+                skills = cv.get("skills", [])
+                jd_match = match_cv(
+                    cv_text=raw_text, cv_skills=skills,
+                    jd_text=jd_text.strip(),
+                    rubric_score=cv.get("total_score", 0),
+                )
+                cache["jd_match"] = jd_match
+                st.session_state["_last_matched_jd"] = jd_text.strip()
+            except Exception as e:
+                jd_match = cache.get("jd_match")
 
         total_score = cv.get("total_score", 0)
         rubric_label = cv.get("label", "Unknown")
@@ -553,7 +622,7 @@ def main():
 
         # --- KPI row ---
         st.subheader("\U0001F4CA Results")
-        kpi_cols = st.columns(3)
+        kpi_cols = st.columns(4)
         with kpi_cols[0]:
             render_metric_card(
                 "RUBRIC SCORE",
@@ -572,13 +641,20 @@ def main():
             else:
                 render_metric_card("ML CLASSIFICATION", "\u2014", "No model", "#888")
         with kpi_cols[2]:
+            if jd_match:
+                match_pct = f"{jd_match['final_match_score'] * 100:.0f}%"
+                sem = jd_match.get("semantic_similarity", 0)
+                render_metric_card("JD MATCH", match_pct, f"Semantic: {sem:.2f}", PURPLE)
+            else:
+                render_metric_card("JD MATCH", "\u2014", "No JD provided", "#888")
+        with kpi_cols[3]:
             strengths = extract_key_strengths(cv, total_score)
             st.markdown(
-                f"<div style='border:1px solid #e5e7eb; border-radius:0.75rem; padding:1rem; "
-                f"background:white; height:100%;'>"
-                f"<div style='font-size:0.8rem; color:#6b7280; margin-bottom:0.5rem;'>KEY STRENGTHS</div>"
+                f"<div style='border:{BORDER}; border-radius:0.75rem; padding:1rem; "
+                f"height:100%;'>"
+                f"<div style='font-size:0.8rem; color:{MUTED}; margin-bottom:0.5rem;'>KEY STRENGTHS</div>"
                 + "".join(
-                    f"<div style='font-size:0.85rem; color:#374151; margin-bottom:0.25rem;'>"
+                    f"<div style='font-size:0.85rem; margin-bottom:0.25rem;'>"
                     f"<span style='color:{GREEN};'>&#10003;</span> {s}</div>"
                     for s in strengths[:5]
                 )
@@ -599,6 +675,7 @@ def main():
             "\U0001F4A1 Suggestions",
             "\U0001F4DD Raw Text",
             "\U0001F4CA History",
+            "\U0001F91D JD Match",
         ])
 
         with tabs[0]:
@@ -608,7 +685,9 @@ def main():
                 st.markdown(f"**Email:** {cv.get('email', 'N/A')}")
                 st.markdown(f"**Phone:** {cv.get('phone', 'N/A')}")
                 skills = cv.get("skills", [])
-                st.markdown(f"**Skills ({len(skills)}):** {', '.join(skills[:15])}{'...' if len(skills) > 15 else ''}")
+                skills_str = ", ".join(skills)
+                st.markdown(f"**Skills ({len(skills)}):**")
+                st.text_area("skills", skills_str, height=100, label_visibility="collapsed", key="skills_area")
                 if cv.get("languages"):
                     st.markdown(f"**Languages:** {', '.join(cv['languages'])}")
 
@@ -648,6 +727,46 @@ def main():
                 st.dataframe(hist_df, use_container_width=True, hide_index=True)
             else:
                 st.info("No previous analyses in this session.")
+
+        with tabs[4]:
+            if jd_match:
+                match = jd_match
+                st.markdown(f"## Match Score: **{match['final_match_score'] * 100:.1f}%**")
+                st.progress(match["final_match_score"])
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Semantic Similarity", f"{match['semantic_similarity']:.3f}")
+                col2.metric("Skill Overlap", f"{match['skill_overlap']:.0%}")
+                col3.metric("Missing Skills", str(len(match['missing_skills'])))
+                st.divider()
+                match_cols = st.columns(2)
+                cv_skills = cv.get("skills", [])
+                jd_skills_found = set()
+                if jd_text:
+                    from src.extractor.skill_extractor import extract_skills
+                    jd_skills_found = {s.lower().strip() for s in extract_skills(jd_text)}
+                matched = sorted(jd_skills_found & {s.lower().strip() for s in cv_skills})
+                missing = match.get("missing_skills", [])
+                with match_cols[0]:
+                    st.markdown("### \u2705 Matched Skills")
+                    if matched:
+                        for s in matched:
+                            st.markdown(f"- {s}")
+                    else:
+                        st.caption("No skills matched.")
+                with match_cols[1]:
+                    st.markdown("### \u274C Missing Skills")
+                    if missing:
+                        for s in missing:
+                            st.markdown(f"- {s}")
+                    else:
+                        st.caption("No missing skills.")
+                st.divider()
+                st.caption(
+                    "Match score = 50% semantic similarity + 30% skill overlap "
+                    "+ 20% rubric score (normalized)."
+                )
+            else:
+                st.info("Paste a job description in the JD field above and re-upload the CV to see match results.")
 
         st.divider()
         col_dl, _ = st.columns([1, 4])
