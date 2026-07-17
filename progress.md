@@ -1,6 +1,6 @@
 # CV Evaluator & Ranking System — Progress Report
 
-**Generated:** July 16, 2026 (night)  
+**Generated:** July 17, 2026  
 **Git:** Deployed at https://cvinsight-io.streamlit.app (Week 5 — ML Classifier + Streamlit V1)  
 **Python:** 3.14.6 (Cloud) / 3.14.3 (local)  
 **Overall Completion:** ~98%
@@ -110,11 +110,38 @@ All 6 priorities fixed on 9 real-world CVs (4 PDF + 3 DOCX + 2 TXT):
 - **Distribution now:** Strong 24.6%, Average 73.7%, Weak 1.7% (mean 66.3, std 7.4)
 - **Remaining:** Manual review of 50 borderline CVs (Day 26), then proceed to Phase 2
 
+### easyocr Bug Fixes (2026-07-17)
+
+Two runtime crashes fixed in `src/parser/ocr_parser.py`:
+
+| Bug | Symptom | Root Cause | Fix |
+|-----|---------|-----------|-----|
+| Crash #1 | `Invalid input type` on every page → empty result | `_preprocess_for_ocr()` returned PIL Image; easyocr `readtext()` only accepts `str(path)`, `bytes`, or `np.ndarray` | Return `np.array(img, dtype=np.uint8)` |
+| Crash #2 | `TypeError` → app crash | `detail=1` returns `[(bbox, text, conf), ...]` but code did `for text, conf in results` — `conf` got the text string, then `text >= 0.3` raised TypeError | `for bbox, text, conf in results` |
+
+**Preprocessing improved**: Removed hard binarization (easyocr CNN works better on natural gradients). Softer: grayscale → autocontrast (cutoff=3) → contrast (1.3×) → sharpen.
+
+**Post-processing**: Added digit-context patterns to `_fix_easyocr_errors()` — `O→0` between digits, `l→1` at number endings.
+
+**Comparison on `demo/ocrtest.pdf`** (scanned PDF, 81.6 KB):
+
+| Metric | Tesseract | EasyOCR |
+|--------|-----------|---------|
+| Chars extracted | 1973 | 1900 |
+| Email | `vikram.singh@email.com \| +91...` | `vikram singh@emailcom` (dots/pipe lost) |
+| "Present" | `Present` | `Preseni` (keyword corrupted) |
+| "September" | `Septernber` | `Sepleitbei` (garble) |
+| "Career Break" | `[Career Break` | `ICareer Break` (leading I injected) |
+| Line structure | Pipe-separated compound lines intact | Fragmented into separate lines |
+| Key data (phone, dates, names) | All correct | Phone correct; dates mostly ok |
+
+**Verdict**: easyOCR is usable but significantly less accurate than tesseract. Line-structure collapse is the fundamental limitation — pipe-separated compound fields fragment into independent lines, confusing the rule-based section parser. ~60% of scanned CVs will extract partially.
+
 ### Deployment to Streamlit Community Cloud (2026-07-16)
 
 - **URL:** https://cvinsight-io.streamlit.app
 - **Working:** PDF (text-layer), DOCX, TXT files — parse → extract → score → classify → suggest
-- **Not working:** Scanned/image-based PDFs — OCR requires system binaries (`poppler-utils`, `tesseract-ocr`) not available on Cloud free tier
+- **Scanned PDFs:** easyocr fallback active (pure Python, no system binaries). Accuracy lower than tesseract — line structure fragmented, punctuation lost, character confusions common
 - **Model loaded:** XGBoost 3.3.0 (re-saved for version compatibility)
 - **Subprocess isolation:** PDF parsing runs in subprocess to contain segfaults from C++ PDFium engine
 - **50 MB file size limit** enforced to prevent OOM on 1 GB RAM container

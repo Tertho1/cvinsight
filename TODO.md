@@ -1,6 +1,6 @@
 # TODO — CV Evaluator & Ranking System
 
-Last updated: 2026-07-16 | Deployed: https://cvinsight-io.streamlit.app | Tests: 343 passing
+Last updated: 2026-07-17 | Deployed: https://cvinsight-io.streamlit.app | Tests: 343 passing
 
 ---
 
@@ -113,6 +113,14 @@ Hardware: RTX 5070 Ti (local inference & training).
 
 ---
 
+## Recent Fixes (2026-07-17)
+
+- [x] **easyocr crash #1**: `_preprocess_for_ocr()` returned PIL Image — easyocr's `readtext()` only accepts numpy array. Fixed: return `np.array(img, dtype=np.uint8)`.
+- [x] **easyocr crash #2**: `detail=1` returns `(bbox, text, conf)` tuples, code destructured as `(text, conf)` → `TypeError`. Fixed: `for bbox, text, conf in results`.
+- [x] **Preprocessing**: Removed hard binarization (easyocr CNN works better on natural gradients). Softer autocontrast + contrast + sharpen only.
+- [x] **`_fix_easyocr_errors()`**: Added digit context patterns — O→0 between digits, l→1 at number endings.
+- [x] **Comparison test**: tesseract (1973 chars) vs easyocr (1900 chars) on `demo/ocrtest.pdf`. Key easyocr weaknesses: line-structure collapse (missing pipes → fragmented lines), punctuation loss (`.`, `@`, `|`), character confusions (`t`↔`l`, `n`→`m`).
+
 ## Recently Completed
 
 ### Week 1 — Foundation & Datasets ✅
@@ -219,7 +227,7 @@ NuExtract failed to produce valid JSON for the burgundy DOCX (truncated output).
 10. **Python 3.14 vs 3.10** — All packages work
 
 ### Deployment (Streamlit Cloud)
-13. **OCR requires system binaries** — `poppler-utils` and `tesseract-ocr` not available on Cloud free tier. Scanned PDFs show "Could not extract text" error. To fix: use cloud OCR API (Google Vision) or upgrade to a Docker-capable host.
+13. **OCR requires system binaries** — `poppler-utils` and `tesseract-ocr` not available on Cloud free tier. easyocr fallback added — slower and less accurate than tesseract but runs without system packages.
 14. **1 GB RAM limit** — Large PDFs or complex processing may cause OOM kills. 50 MB file size limit enforced in app.
 
 ### Data Quality
