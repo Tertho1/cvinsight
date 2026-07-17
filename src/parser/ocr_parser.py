@@ -126,24 +126,27 @@ def _clean_ocr_text(text: str) -> str:
 def _preprocess_for_ocr(pil_image):
     """Preprocess a PIL image for better OCR accuracy.
 
-    Converts to grayscale with autocontrast and slight sharpening.
-    Returns a numpy array (easyocr does not accept PIL Images directly).
-    Avoids hard binarization — easyocr's CNN works better on natural
-    gradients than on binary black/white images.
+    Increases contrast, sharpens, converts to grayscale, and binarizes
+    to reduce noise that easyocr struggles with on document text.
     """
     import numpy as np
     from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
     img = pil_image.convert("L")
 
-    img = ImageOps.autocontrast(img, cutoff=3)
+    img = ImageOps.autocontrast(img, cutoff=5)
 
     enhancer = ImageEnhance.Contrast(img)
-    img = enhancer.enhance(1.3)
+    img = enhancer.enhance(1.5)
 
     img = img.filter(ImageFilter.SHARPEN)
 
-    return np.array(img, dtype=np.uint8)
+    arr = np.array(img, dtype=np.uint8)
+    threshold = arr.mean() * 0.8
+    if threshold > 0:
+        arr = np.where(arr > threshold, 255, 0).astype(np.uint8)
+
+    return arr
 
 
 def _fix_easyocr_errors(text: str) -> str:
@@ -162,8 +165,6 @@ def _fix_easyocr_errors(text: str) -> str:
         r"\bthc ": "the ",
         r"\bc0m": "com",
         r"\bg0\b": "go",
-        r"(?<=\d)O(?=\d)": "0",
-        r"(?<=\d)l\b": "1",
     }
     for pattern, replacement in fixes.items():
         text = re.sub(pattern, replacement, text)
@@ -235,10 +236,7 @@ def ocr_pdf_easyocr(path: str, scale: float = 3.0, min_confidence: float = 0.3,
             processed = _preprocess_for_ocr(pil_image)
             results = reader.readtext(processed, detail=1, paragraph=False)
 
-            filtered = []
-            for bbox, text, conf in results:
-                if conf >= min_confidence:
-                    filtered.append(text)
+            filtered = [text for text, conf in results if conf >= min_confidence]
             page_text = "\n".join(filtered)
             page_text = _fix_easyocr_errors(page_text)
             page_texts.append(page_text)
