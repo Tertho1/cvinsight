@@ -10,8 +10,9 @@ Last updated: 2026-07-17 | Deployed: https://cvinsight-io.streamlit.app | Tests:
 Add job description matching, semantic similarity, skill overlap, and CV ranking to the Streamlit app.
 
 **Deployed:** Streamlit Community Cloud (https://cvinsight-io.streamlit.app)
-- PDF (text-layer), DOCX, TXT — working
-- **Scanned/image-based PDFs** — OCR not available (Streamlit Cloud lacks system binaries: `poppler-utils`, `tesseract-ocr`)
+- **Status: DOWN** — App crashes on startup with OOM (1GB RAM limit exceeded)
+- Root cause: torch (CUDA) + easyocr + spaCy + XGBoost + matplotlib exceed 1GB RAM during process startup/lazy loading
+- Fix requires: Docker-capable host (Render.com, Railway) or reducing memory footprint
 
 ---
 
@@ -120,6 +121,8 @@ Hardware: RTX 5070 Ti (local inference & training).
 - [x] **Preprocessing**: Removed hard binarization (easyocr CNN works better on natural gradients). Softer autocontrast + contrast + sharpen only.
 - [x] **`_fix_easyocr_errors()`**: Added digit context patterns — O→0 between digits, l→1 at number endings.
 - [x] **Comparison test**: tesseract (1973 chars) vs easyocr (1900 chars) on `demo/ocrtest.pdf`. Key easyocr weaknesses: line-structure collapse (missing pipes → fragmented lines), punctuation loss (`.`, `@`, `|`), character confusions (`t`↔`l`, `n`→`m`).
+- [x] **All 343 tests passing** locally.
+- [x] **Deployment blocked**: Streamlit Cloud 1GB RAM insufficient for torch + easyocr + spaCy + XGBoost. App crashes on startup with OOM. Need Docker-capable host (Render.com/Railway) to proceed.
 
 ## Recently Completed
 
@@ -226,9 +229,11 @@ NuExtract failed to produce valid JSON for the burgundy DOCX (truncated output).
 9. **SyntaxWarning `"\/"` in test** — Harmless
 10. **Python 3.14 vs 3.10** — All packages work
 
-### Deployment (Streamlit Cloud)
-13. **OCR requires system binaries** — `poppler-utils` and `tesseract-ocr` not available on Cloud free tier. easyocr fallback added — slower and less accurate than tesseract but runs without system packages.
-14. **1 GB RAM limit** — Large PDFs or complex processing may cause OOM kills. 50 MB file size limit enforced in app.
+### Deployment (Streamlit Cloud) — CRITICAL
+13. **1 GB RAM insufficient** — torch (CUDA, ~800MB) + easyocr + spaCy + XGBoost + matplotlib exceed limit. App crashes on startup with OOM (no traceback, generic "Oh no" error, "connection reset by peer" on health check). Fix: CPU-only torch not viable — changes uv dependency tree, breaks package resolution. Need Docker host (Render.com/Railway) or drop easyocr from Cloud deployment.
+14. **CPU-only torch pin breaks app** — `--extra-index-url https://download.pytorch.org/whl/cpu` with pinned `torch==2.13.0`/`torchvision==0.28.0` causes uv resolver to downgrade packages (numpy 2.5.1→2.4.4, certifi 2026.6.17→2022.12.7), breaking app startup.
+15. **easyocr crash bugs fixed locally** (343 tests passing) — PIL→numpy conversion, tuple destructuring, preprocessing improvements. Working on local machine but cannot verify on Cloud due to OOM.
+16. **Recommended migration**: Render.com (512MB RAM, 750h/mo free, Dockerfile supports `apt-get tesseract-ocr` + `poppler-utils`) or Railway.app.
 
 ### Data Quality
 11. **No Strong CVs before config tweak** — Label thresholds adjusted to 72+/50-71/0-49 to match data reality

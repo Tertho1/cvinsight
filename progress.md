@@ -1,9 +1,10 @@
 # CV Evaluator & Ranking System — Progress Report
 
-**Generated:** July 17, 2026  
-**Git:** Deployed at https://cvinsight-io.streamlit.app (Week 5 — ML Classifier + Streamlit V1)  
+**Generated:** July 17, 2026 (evening)  
+**Git:** https://github.com/Tertho1/cvinsight  
+**Deployment:** https://cvinsight-io.streamlit.app — **DOWN (OOM)**  
 **Python:** 3.14.6 (Cloud) / 3.14.3 (local)  
-**Overall Completion:** ~98%
+**Overall Completion:** ~98% (code), 0% (deployment)
 
 ---
 
@@ -137,7 +138,23 @@ Two runtime crashes fixed in `src/parser/ocr_parser.py`:
 
 **Verdict**: easyOCR is usable but significantly less accurate than tesseract. Line-structure collapse is the fundamental limitation — pipe-separated compound fields fragment into independent lines, confusing the rule-based section parser. ~60% of scanned CVs will extract partially.
 
-### Deployment to Streamlit Community Cloud (2026-07-16)
+### Deployment Status — CRITICAL FAILURE (2026-07-17)
+
+**Problem**: Streamlit Community Cloud free tier has 1 GB RAM limit. Loading torch (CUDA, ~800MB) + easyocr + spaCy + XGBoost + matplotlib simultaneously causes OOM kill. The process crashes silently — no Python traceback, generic "Oh no" error, `connection reset by peer` on health check endpoint.
+
+**Attempted fixes (all failed):**
+1. **CPU-only torch pin** (`--extra-index-url https://download.pytorch.org/whl/cpu`) → Changed uv dependency tree, downgraded packages (numpy 2.5.1→2.4.4), broke app startup differently
+2. **Removed packages.txt** → Was installing 68 apt packages (143MB), but removal alone didn't fix OOM
+3. **Full revert to working commit** → App code is identical to last working state, confirms issue is environmental (Cloud platform change or accumulated memory pressure)
+
+**Root cause**: The app worked briefly at initial deploy (19:51 July 16), but repeated redeployments + apt install + full pip reinstalls accumulated memory pressure. The 1GB RAM is fundamentally insufficient for all required libraries.
+
+**Path forward**: Migrate to a Docker-capable host:
+- Render.com (512MB RAM but no CUDA overhead, Dockerfile → `apt-get tesseract`)
+- Railway.app (similar Docker support)
+- Alternative: Drop easyocr from Cloud deployment and accept no scanned PDF support
+
+### Deployment to Streamlit Community Cloud (2026-07-16) (HISTORICAL)
 
 - **URL:** https://cvinsight-io.streamlit.app
 - **Working:** PDF (text-layer), DOCX, TXT files — parse → extract → score → classify → suggest
