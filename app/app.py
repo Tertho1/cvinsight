@@ -225,7 +225,7 @@ def render_table(items, columns, caption):
             row[col_label] = item.get(col_key, "")
         rows.append(row)
     df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width='stretch', hide_index=True)
     if len(items) > 10:
         st.caption(f"Showing 10 of {len(items)} {caption}")
 
@@ -518,7 +518,7 @@ def main():
                 label_visibility="collapsed",
                 key="jd_input",
             )
-            submitted = st.form_submit_button("Match", use_container_width=True)
+            submitted = st.form_submit_button("Match", width='stretch')
             if submitted:
                 st.session_state["_jd_text"] = jd_text
                 st.session_state["_jd_submitted"] = True
@@ -761,7 +761,7 @@ def main():
         with tabs[3]:
             if st.session_state.history:
                 hist_df = pd.DataFrame(st.session_state.history)
-                st.dataframe(hist_df, use_container_width=True, hide_index=True)
+                st.dataframe(hist_df, width='stretch', hide_index=True)
             else:
                 st.info("No previous analyses in this session.")
 
@@ -810,10 +810,11 @@ def main():
         col_dl, _ = st.columns([1, 4])
         with col_dl:
             cv_json = json.dumps(cv, indent=2, default=str)
+            fname = uploaded_file.name if uploaded_file else "cv_analysis"
             st.download_button(
                 label="\U0001F4E5 Download Full Analysis (JSON)",
                 data=cv_json,
-                file_name=f"{uploaded_file.name}_analysis.json",
+                file_name=f"{fname}_analysis.json",
                 mime="application/json",
             )
 
@@ -824,7 +825,7 @@ def main():
             st.divider()
             st.subheader("\U0001F4CA Session History")
             hist_df = pd.DataFrame(st.session_state.history)
-            st.dataframe(hist_df, use_container_width=True, hide_index=True)
+            st.dataframe(hist_df, width='stretch', hide_index=True)
 
 
 if __name__ == "__main__":

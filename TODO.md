@@ -4,6 +4,26 @@ Last updated: 2026-07-18 | App: `streamlit run app/app.py` | Tests: 361 passing
 
 ---
 
+## Current Priority — Adopted from V2 Proposals
+
+These items were selected from the V2 platform proposals (archived in `project_plan.md` Appendix A) as the highest-ROI improvements for our current codebase:
+
+- [ ] **Dynamic `criteria_scores`** — replace fixed 7-section rubric with a configurable criteria list loaded from `config/default_criteria.json`. Each criterion has independent weight, `method` tag, and `rationale`. Scorer reads from config, not hardcoded keys.
+- [ ] **Score rationales** — every criterion score includes a human-readable rationale string. Objective scores use template strings (e.g. "8 years experience → 10/10"), no LLM needed.
+- [ ] **Schema update** — `section_scores` → `criteria_scores` list; add `method`, `rationale`, `overridden_by` to each entry; rename `jd_match` → `match`
+- [ ] **Multi-CV comparison view** — simple side-by-side table in Personal Mode when multiple CVs uploaded, same categories as rows
+
+### Future (Deferred — see project_plan.md Appendix A)
+
+- [ ] Company Mode (batch upload, criteria builder, results board, CSV export)
+- [ ] Async batch processing for 100+ CVs
+- [ ] User auth + data isolation (Personal vs. Company accounts)
+- [ ] Optional LLM scorer for contextual criteria (achievement quality, leadership)
+- [ ] Fairness warning system
+- [ ] UI rewrite beyond Streamlit
+
+---
+
 ## Recent Improvements (2026-07-18)
 
 - [x] **`src/matcher/embedder.py`** — lazy-loaded `multi-qa-MiniLM-L6-cos-v1`, added `embed_texts()` batch method
@@ -14,8 +34,12 @@ Last updated: 2026-07-18 | App: `streamlit run app/app.py` | Tests: 361 passing
 - [x] **`notebooks/matching_eval.ipynb`** — Spearman ρ evaluation vs HF `0xnbk/resume-ats-score-v1-en`
 - [x] **JD matching in app** — JD text area beside upload, match % KPI card, `JD Match` tab with matched/missing skills
 - [x] **Theme-aware colors** — brighter purple/green/amber/red for light+dark contrast, no hardcoded white backgrounds
-- [x] **Clickable upload box** — native file_uploader overlaid with opacity 0, clicking the styled box opens file dialog
-- [x] **Auto-match on JD change** — no "Match" button, re-runs when JD text differs from last matched
+- [x] **Native upload box** — `st.file_uploader` styled directly as dashed clickable box via CSS pseudo-elements (icon + text), no overlay hack
+- [x] **JD form wrapping** — `st.form` with Match button; auto-matches on initial upload, re-matches on form submit
+- [x] **Equal column widths** — `st.columns(2)` for symmetric upload/JD layout
+- [x] **Fixed upload box height (255px)** — matches JD form height, no resize on file upload
+- [x] **History dedup** — prevents duplicate entries on rerun
+- [x] **Hidden native elements** — label, Upload button span, drag-drop instructions, file chips all hidden
 - [x] **All skills displayed** — scrollable text_area instead of truncated first-15
 - [x] **Borders** — 2–3px rgba(128,128,128,0.35) for visibility on both themes
 
@@ -129,6 +153,25 @@ Hardware: RTX 5070 Ti (local inference & training).
 - [ ] Full evaluation metrics (NER F1, classifier F1, Spearman ρ, NDCG@5)
 - [ ] Multi-CV ranking tab in Streamlit
 - [ ] Final report
+
+---
+
+## Archived: V2 Proposals (Future Scaling)
+
+Full proposals archived in `project_plan.md` Appendix A. Summary of decisions:
+
+| Proposal | Decision | Notes |
+|----------|----------|-------|
+| Two-Mode Platform (Personal + Company) | ❌ Deferred | Needs auth system, DB, async queue, ATS UI |
+| Hybrid Scoring (Objective + LLM) | 🔶 Partial | Adopted criteria_scores + rationales; LLM scorer deferred |
+| Schema v2 (criteria_scores) | ✅ Adopted | See Current Priority above |
+| Self-Hosted Track (spaCy+XGBoost) | ✅ Already done | Our current pipeline matches their V3 spec |
+| Evaluation Metrics v2 | 📋 Reference | Aspirational targets for future Company Mode |
+| Score Rationales (Auditability) | ✅ Adopted | See Current Priority above |
+| Fairness Warning System | ❌ Skipped | Out of scope |
+| Async Batch Processing | ❌ Deferred | With Company Mode |
+| OCR Fallback Trigger | ✅ Already done | < 50 char threshold implemented |
+| Multi-CV Side-by-Side Comparison | 📋 TODO | See Current Priority above |
 
 ---
 

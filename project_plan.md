@@ -782,3 +782,130 @@ Table of Contents
    ☐ All code committed — no uncommitted files
    ☐ Clean commit history with meaningful commit messages
    ☐ Tags: v0.1 (foundation), v1.0 (V1 complete), v2.0 (V2 complete), v3.0 (final)
+
+---
+
+## Appendix A — V2 Proposals (Future Scaling)
+
+The following proposals were analyzed on 2026-07-18 and archived here for when the project scales beyond single-user Personal Mode.
+
+### Proposal A: Two-Mode Platform (Personal + Company)
+**Source:** "CV Evaluation & Recruitment Shortlisting Platform — Build Prompt (v2)"
+
+A web app with two distinct modes sharing one hybrid CV-parsing and scoring engine:
+
+1. **Personal Mode** — individual uploads their own CV(s), gets private evaluation with scores and suggestions.
+2. **Company Mode** — recruiter uploads batch of up to 100+ CVs, defines job criteria and weights, gets priority-ranked shortlist.
+
+Key additions beyond current project:
+- Job criteria builder with editable per-criterion weights (replaces fixed 7-section rubric)
+- Bulk upload (100+ CVs), async processing with streaming results
+- Manual score override with visible audit tag (`overridden_by`)
+- Account separation and data isolation (Personal vs. Company)
+- Priority-ranked results board with filters, bulk actions, CSV export
+
+**Decision on 2026-07-18:** Deferred. Valuable but too large for current scope — would need auth system, database, async job queue, and full ATS-grade UI. Keep as v3 target.
+
+---
+
+### Proposal B: Hybrid Scoring Engine (Objective + LLM)
+**Source:** Same as Proposal A
+
+Every criterion scored via one of two methods:
+- `objective` — computed directly from extracted fields (experience duration, degree level, certification count, skill overlap)
+- `llm` — judged by an LLM against the criterion text with a one-line rationale (achievement quality, leadership signal, relevance framing)
+
+Each score carries `method` and `rationale` tags in the output. The overall formula:
+```
+weighted_score = Σ(criterion_score × weight) / Σ(weight)
+```
+
+**Decision on 2026-07-18:** Partially adopted. The `criteria_scores` dynamic list with `method`/`rationale`/`overridden_by` fields and configurable weights was adopted (see TODO). The LLM scorer itself was deferred — it's optional, requires API key, adds cost/latency, and our rule-based scorers can generate rationales via templates without an LLM.
+
+---
+
+### Proposal C: Schema v2 (criteria_scores)
+**Source:** "CV Evaluator & Ranking System — Project Plan (v2)" Section 2
+
+Replaces `section_scores` (7 hardcoded keys) with `criteria_scores` (dynamic list driven by whatever criteria set is active). Each entry carries:
+```json
+{"id":"", "label":"", "score":0, "max":10, "weight":1,
+ "method":"objective|llm", "rationale":"", "overridden_by":null}
+```
+Renames `jd_match` → `match` (generalized for both single target role and job posting).
+
+**Decision on 2026-07-18:** Adopted as the next improvement. See TODO.
+
+---
+
+### Proposal D: Self-Hosted Extraction Track (V3 Stretch)
+**Source:** "CV Evaluator & Ranking System — Project Plan (v2)" Section 6, Phase 7
+
+Swap the objective half of the scoring engine onto a self-hosted stack (spaCy NER + sentence-transformers + XGBoost) instead of relying on a hosted LLM API for extraction. Label 200–500 CVs via the rubric as pseudo-labels; fine-tune NER; compare pipelines.
+
+**Decision on 2026-07-18:** Already implemented. Our current pipeline IS this self-hosted stack. The proposal's "V3 stretch" describes our existing architecture verbatim.
+
+---
+
+### Proposal E: Evaluation Metrics v2
+**Source:** "CV Evaluator & Ranking System — Project Plan (v2)" Section 7
+
+| Module | Metric | Target |
+|--------|--------|--------|
+| Extraction | Precision/Recall/F1 on skills | F1 ≥ 0.75 |
+| Classification | Accuracy + weighted F1 | ≥ 0.80 |
+| Ranking | Spearman ρ vs. human ranking | ≥ 0.65 |
+| Ranking (top) | NDCG@5 | ≥ 0.75 |
+| Suggestions | Manual review relevance | ≥ 4/5 |
+| LLM consistency | Score variance on repeat runs | Small tolerance band |
+
+**Decision on 2026-07-18:** Our existing metrics (accuracy 87.65%, Spearman ρ ~0.19 on initial eval) don't meet the NDCG@5/ρ targets yet. These are aspirational goals for when Company Mode and improved matching are built. Our extraction F1 is not formally measured yet — worth adding.
+
+---
+
+### Proposal F: Score Rationales (Auditability)
+**Source:** Both proposals
+
+Every score carries a human-readable rationale. For objective scores this is a template string (e.g. "8 years of experience → 10/10 on Work Experience"). For LLM scores this is the model's one-line justification. Manual overrides are visibly tagged (`overridden_by`) distinct from AI-suggested values.
+
+**Decision on 2026-07-18:** Adopted as the next improvement. Low effort, high UX value. See TODO.
+
+---
+
+### Proposal G: Fairness Warning System
+**Source:** "CV Evaluation & Recruitment Shortlisting Platform — Build Prompt (v2)" Section 4
+
+Lightweight warning if a company's chosen criteria correlate with protected characteristics rather than job-relevant signal.
+
+**Decision on 2026-07-18:** Skipped. Interesting concept but extremely complex to implement correctly. Out of scope for current project stage.
+
+---
+
+### Proposal H: Async Batch Processing
+**Source:** Both proposals
+
+Company Mode must not block the UI while processing 100+ CVs — async processing, visible progress, partial results as they land.
+
+**Decision on 2026-07-18:** Deferred with Company Mode. Only relevant when Company Mode is built.
+
+---
+
+### Proposal I: OCR Fallback Trigger
+**Source:** "CV Evaluation & Recruitment Shortlisting Platform — Build Prompt (v2)" Section 4
+
+Trigger OCR when extracted text < 50 characters.
+
+**Decision on 2026-07-18:** Already implemented. Our parser already uses this threshold.
+
+---
+
+### Proposal J: Multi-CV Side-by-Side Comparison
+**Source:** "CV Evaluation & Recruitment Shortlisting Platform — Build Prompt (v2)" Section 2
+
+Personal Mode: multiple CVs uploaded → simple side-by-side comparison view, same categories as rows.
+
+**Decision on 2026-07-18:** Not yet implemented. Worth adding to TODO as a low-effort UX improvement for Personal Mode.
+
+---
+
+*Appendix appended 2026-07-18. These proposals are not active requirements — they are archived here for reference when project scope expands.*

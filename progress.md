@@ -105,13 +105,11 @@ All 4 matcher modules built and tested:
 | Skill Overlap | `src/matcher/skill_overlap.py` | JD skill extraction via `extract_skills()`, overlap ratio + missing skills list |
 | Ranker | `src/matcher/ranker.py` | Weighted final score (50% sem + 30% skill overlap + 20% rubric), `_cv_to_text()` fallback for dicts without raw_text |
 
-**App integration:** JD text area beside CV upload → "JD Match" tab shows match %, semantic similarity, skill overlap, matched skills (left column) + missing skills (right column).
+**App integration:** JD text area beside CV upload (wrapped in `st.form` with Match button) → "JD Match" tab shows match %, semantic similarity, skill overlap, matched skills (left column) + missing skills (right column). Auto-matches during initial processing; form submit re-matches from cache.
 
 **Theme:** All colors now use light+dark compatible palette (brighter purple/green/amber/red). No hardcoded white/light backgrounds. Dataframe backgrounds overridden to transparent.
 
-**Upload area:** Styled dashed box with icon/text; native file_uploader overlaid at opacity 0 so the entire box is clickable. No visible "Browse files" button.
-
-**Auto-matching:** Match runs automatically when JD text changes (detected via `_last_matched_jd` session state). No manual "Match" button needed.
+**Upload area:** Native `st.file_uploader` styled directly as a dashed clickable box via CSS pseudo-elements (icon + text). No overlay, no visible button/label/chips. Fixed 255px height to match JD form.
 
 **18 tests** in `tests/test_matcher.py` — all passing.
 **`notebooks/matching_eval.ipynb`** — Spearman ρ evaluation against HF `0xnbk/resume-ats-score-v1-en` (1275 CV-JD pairs).
@@ -164,18 +162,21 @@ Two runtime crashes fixed in `src/parser/ocr_parser.py`:
 
 **Verdict**: easyOCR is usable but significantly less accurate than tesseract. Line-structure collapse is the fundamental limitation — pipe-separated compound fields fragment into independent lines, confusing the rule-based section parser. ~60% of scanned CVs will extract partially.
 
-### UI Overhaul (2026-07-17)
+### UI Overhaul (2026-07-17/18)
 
 Complete Streamlit UI rewrite in `app/app.py`:
 
 | Feature | Before | After |
 |---------|--------|-------|
 | Header | Plain `st.title()` | Branded doc icon + "CV-Insight" title + purple accent subtitle |
-| Upload area | Raw `st.file_uploader` | Dashed-border container with cloud icon, "Drag & drop" text |
+| Upload area | Raw `st.file_uploader` | Native `st.file_uploader` styled as dashed clickable box with CSS pseudo-element icon/text, fixed 255px height, hidden label/button/chips |
+| JD input | Plain text area beside upload | Wrapped in `st.form` with Match button; auto-matches on initial upload, form-submit for re-matching |
+| Column layout | `st.columns([3, 2])` (upload wider) | `st.columns(2)` (equal widths, symmetric) |
 | Tips | None | Side-by-side tips column with checkmark list |
 | Pipeline | Text markdown list | 5 horizontal steps with icons + arrow connectors |
 | Section scores | Progress bars (rows) | Color-coded mini-cards with score + thin progress bar |
 | Key strengths | Not shown | Auto-extracted card (skills, experience, education, projects) |
+| History | Duplicate entries on every rerun | Dedup by filename, max 5 entries |
 | Clear state | Sidebar button only | Top-right "Clear All" button + sidebar "Clear History" |
 | Sidebar model info | Text only | Card with green checkmark + "Online" indicator + help widget |
 
@@ -231,7 +232,7 @@ Complete Streamlit UI rewrite in `app/app.py`:
   - Improvement suggestions
   - JSON download
 
-### Week 6 — JD Matching, Ranking & V2 App ❌ (0%)
+### Week 6 — JD Matching, Ranking & V2 App ✅ (100%)
 - `src/matcher/embedder.py` — sentence-transformer embedder
 - `src/matcher/semantic_scorer.py` — cosine similarity
 - `src/matcher/skill_overlap.py` — skill overlap computation
@@ -330,9 +331,9 @@ streamlit run app/app.py
 | LLM | Ready-made adapter evaluation (2 models) | ✅ 100% | — | +2% |
 | LLM | Custom LoRA fine-tuning (v1) | ✅ 100% | — | +2% |
 | W5 | ML Classifier + Streamlit V1 | ✅ 100% | 15% | 15% |
-| W6 | JD matching & ranking | ❌ 0% | 10% | 0% |
+| W6 | JD matching & ranking | ✅ 100% | 10% | 10% |
 | W7 | Fine-tuning & final report | 🔜 ~5% | 5% | ~0.25% |
-| **Total** | | | **100%** | **~98%** |
+| **Total** | | | **100%** | **~99%** |
 
 **Execution progress (3-phase plan):**
 
@@ -454,12 +455,7 @@ Even after fixes, some edge cases remain in our rule-based extractor:
 3. ✅ Ready-made adapters evaluated (sandeeppanem: profile summarizer, NuExtract: too shallow)
 4. ✅ Custom LoRA pipeline designed, trained, and evaluated
 5. ✅ **Week 5 — ML Text Classifier + Streamlit V1** — XGBoost (87.65% acc), Streamlit app running
-6. 🔜 **Week 6 — JD Matching & Ranking (V2)**
-   - `src/matcher/embedder.py` — sentence-transformer embedder
-   - `src/matcher/semantic_scorer.py` — cosine similarity
-   - `src/matcher/skill_overlap.py` — skill overlap + missing skills
-   - `src/matcher/ranker.py` — ranking formula engine
-   - Streamlit V2 with JD upload + match % + ranking tab
+6. ✅ **Week 6 — JD Matching & Ranking (V2)** — embedder, semantic scorer, skill overlap, ranker, app integration, matching_eval notebook, 18 tests
 7. 🔜 **Week 7 — Custom LoRA v2 improvements + Final Report**
 
 ### NLP Techniques Mapping
@@ -485,7 +481,7 @@ Even after fixes, some edge cases remain in our rule-based extractor:
 | Custom LoRA (v1) | ✅ 100% | Done |
 | Custom LoRA (v2 quality) | ⏸️ Hold | After V1 |
 | Week 5 (ML Classifier + Streamlit) | ✅ 100% | Done |
-| Week 6 (JD Matching) | ❌ 0% | ~2 days |
+| Week 6 (JD Matching) | ✅ 100% | Done |
 | Week 7 (Fine-tune + eval report) | ❌ 0% | ~2 days |
 
 **Overall:** ~98% (only Week 6 matching + Week 7 report remain)
