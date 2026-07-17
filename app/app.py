@@ -331,33 +331,71 @@ def main():
         f"""
         <style>
         .stApp {{ font-family: system-ui, -apple-system, sans-serif; }}
-        .upload-area {{
-            border: 3px dashed rgba(128,128,128,0.35); border-radius: 1rem;
-            padding: 2rem 1rem; text-align: center;
+
+        /* Style the native file_uploader as the upload box */
+        [data-testid="stFileUploader"] {{
+            border: 3px dashed rgba(128,128,128,0.35);
+            border-radius: 1rem;
             transition: border-color 0.2s;
-            position: relative;
+            overflow: hidden;
         }}
-        .upload-area:hover {{ border-color: {PURPLE}; }}
-        .upload-area > [data-testid="stFileUploader"] {{
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            opacity: 0; cursor: pointer; z-index: 10;
-            font-size: 0; line-height: 0; height: 100%; width: 100%;
+        [data-testid="stFileUploader"]:hover {{
+            border-color: {PURPLE};
         }}
-        .upload-area > [data-testid="stFileUploader"] > section {{
-            height: 100%; min-height: 100%; padding: 0; border: none;
+        [data-testid="stFileUploader"] > section {{
+            border: none !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            height: 255px !important;
+            padding: 1.5rem !important;
+            text-align: center !important;
+            cursor: pointer !important;
+            box-sizing: border-box !important;
         }}
-        .jd-box {{
-            border: 2px solid rgba(128,128,128,0.35); border-radius: 0.75rem;
-            padding: 1.25rem;
+        /* Hide the label (takes space above section even when collapsed) */
+        [data-testid="stFileUploader"] > label {{
+            display: none !important;
         }}
+        /* Hide the Upload button span and instruction text */
+        [data-testid="stFileUploader"] > section > span {{
+            display: none !important;
+        }}
+        [data-testid="stFileUploaderDropzoneInstructions"] {{
+            display: none !important;
+        }}
+        /* Hide file metadata chips that appear after upload */
+        [data-testid="stFileChips"] {{
+            display: none !important;
+        }}
+        /* Hide file metadata after upload */
+        div.stFileUploaderFile {{
+            display: none !important;
+        }}
+        /* Custom upload-box icon */
+        [data-testid="stFileUploader"] > section::before {{
+            content: "⬆️";
+            font-size: 3rem;
+            display: block;
+            margin-bottom: 0.5rem;
+            line-height: 1;
+        }}
+        /* Custom upload-box text */
+        [data-testid="stFileUploader"] > section::after {{
+            content: "Click or drag your CV here\\A PDF, DOCX, TXT up to 50 MB";
+            white-space: pre;
+            display: block;
+            font-weight: 600;
+            font-size: 1.1rem;
+            line-height: 1.5;
+        }}
+
         [data-testid="stDataFrame"] > div {{
             background: transparent !important;
         }}
         [data-testid="stDataFrame"] table {{
             background: transparent !important;
-        }}
-        div.stFileUploaderFile {{
-            display: none !important;
         }}
         </style>
         """,
@@ -455,44 +493,37 @@ def main():
             st.rerun()
 
     # --- Upload + JD ---
-    jd_text = st.session_state.get("_jd_text", "")
-    upload_col, jd_col = st.columns([3, 2])
+    upload_col, jd_col = st.columns(2)
 
     with upload_col:
-        st.markdown(
-            f"<div class='upload-area' id='upload-box'>"
-            f"<div style='font-size:3rem; color:{PURPLE}; margin-bottom:0.5rem;'>&#11014;&#65039;</div>"
-            f"<div style='font-weight:600; font-size:1.1rem; margin-bottom:0.25rem;'>"
-            f"Click or drag your CV here</div>"
-            f"<div style='font-size:0.85rem; color:{MUTED}; margin-bottom:1rem;'>"
-            f"PDF, DOCX, TXT up to 50 MB</div>",
-            unsafe_allow_html=True,
-        )
         uploaded_file = st.file_uploader(
             "Upload CV", type=["pdf", "docx", "txt"],
             label_visibility="collapsed",
         )
-        st.markdown("</div>", unsafe_allow_html=True)
 
     with jd_col:
-        st.markdown(
-            f"<div class='jd-box'>"
-            f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;'>"
-            f"<span style='font-size:1.3rem;'>&#128269;</span>"
-            f"<span style='font-weight:600;'>Job Description (optional)</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-        jd_text = st.text_area(
-            "Paste the job description here for matching...",
-            value=jd_text,
-            height=130,
-            placeholder="e.g. Looking for a Python developer with Django and PostgreSQL experience...",
-            label_visibility="collapsed",
-            key="jd_input",
-        )
-        st.session_state["_jd_text"] = jd_text
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.form(key="jd_form"):
+            st.markdown(
+                f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;'>"
+                f"<span style='font-size:1.3rem;'>&#128269;</span>"
+                f"<span style='font-weight:600;'>Job Description (optional)</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            jd_text = st.text_area(
+                "Paste the job description here for matching...",
+                value=st.session_state.get("_jd_text", ""),
+                height=130,
+                placeholder="e.g. Looking for a Python developer with Django and PostgreSQL experience...",
+                label_visibility="collapsed",
+                key="jd_input",
+            )
+            submitted = st.form_submit_button("Match", use_container_width=True)
+            if submitted:
+                st.session_state["_jd_text"] = jd_text
+                st.session_state["_jd_submitted"] = True
+            else:
+                st.session_state["_jd_submitted"] = False
 
     # --- Pipeline visualization ---
     render_pipeline()
@@ -554,7 +585,8 @@ def main():
                 ml_label, ml_proba = classify_text(model_pipeline, raw_text)
 
             jd_match_result = None
-            if jd_text and jd_text.strip():
+            current_jd = st.session_state.get("_jd_text", "")
+            if current_jd and current_jd.strip():
                 st.write("\U0001F4CB Matching against job description...")
                 try:
                     from src.matcher.ranker import match_cv
@@ -563,10 +595,10 @@ def main():
                     jd_match_result = match_cv(
                         cv_text=raw_for_match,
                         cv_skills=skills,
-                        jd_text=jd_text.strip(),
+                        jd_text=current_jd.strip(),
                         rubric_score=cv.get("total_score", 0),
                     )
-                    st.session_state["_last_matched_jd"] = jd_text.strip()
+                    st.session_state["_last_matched_jd"] = current_jd.strip()
                 except Exception as e:
                     st.warning(f"JD matching failed: {e}")
                     jd_match_result = None
@@ -593,32 +625,37 @@ def main():
         ml_proba = cache["ml_proba"]
         jd_match = cache.get("jd_match")
 
-        last_jd = st.session_state.get("_last_matched_jd", "")
-        if jd_text.strip() and jd_text.strip() != last_jd:
+        current_jd = st.session_state.get("_jd_text", "")
+        last_matched = st.session_state.get("_last_matched_jd", "")
+        if (current_jd.strip() and current_jd.strip() != last_matched
+                and st.session_state.get("_jd_submitted", False)):
             try:
                 from src.matcher.ranker import match_cv
                 skills = cv.get("skills", [])
                 jd_match = match_cv(
                     cv_text=raw_text, cv_skills=skills,
-                    jd_text=jd_text.strip(),
+                    jd_text=current_jd.strip(),
                     rubric_score=cv.get("total_score", 0),
                 )
                 cache["jd_match"] = jd_match
-                st.session_state["_last_matched_jd"] = jd_text.strip()
+                st.session_state["_last_matched_jd"] = current_jd.strip()
             except Exception as e:
                 jd_match = cache.get("jd_match")
 
         total_score = cv.get("total_score", 0)
         rubric_label = cv.get("label", "Unknown")
 
-        entry = {
-            "filename": uploaded_file.name if uploaded_file else "N/A",
-            "total_score": total_score,
-            "rubric_label": rubric_label,
-            "ml_label": ml_label,
-        }
-        st.session_state.history.insert(0, entry)
-        st.session_state.history = st.session_state.history[:5]
+        fname = uploaded_file.name if uploaded_file else "N/A"
+        existing_names = {e["filename"] for e in st.session_state.history}
+        if fname not in existing_names:
+            entry = {
+                "filename": fname,
+                "total_score": total_score,
+                "rubric_label": rubric_label,
+                "ml_label": ml_label,
+            }
+            st.session_state.history.insert(0, entry)
+            st.session_state.history = st.session_state.history[:5]
 
         # --- KPI row ---
         st.subheader("\U0001F4CA Results")
@@ -741,9 +778,10 @@ def main():
                 match_cols = st.columns(2)
                 cv_skills = cv.get("skills", [])
                 jd_skills_found = set()
-                if jd_text:
+                current_jd_tab = st.session_state.get("_jd_text", "")
+                if current_jd_tab:
                     from src.extractor.skill_extractor import extract_skills
-                    jd_skills_found = {s.lower().strip() for s in extract_skills(jd_text)}
+                    jd_skills_found = {s.lower().strip() for s in extract_skills(current_jd_tab)}
                 matched = sorted(jd_skills_found & {s.lower().strip() for s in cv_skills})
                 missing = match.get("missing_skills", [])
                 with match_cols[0]:
