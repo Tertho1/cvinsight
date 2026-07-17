@@ -1,8 +1,8 @@
-# CV Evaluator & Ranking System — Progress Report
+# CV-Insight — Progress Report
 
-**Generated:** July 17, 2026 (evening)  
+**Generated:** July 17, 2026  
 **Git:** https://github.com/Tertho1/cvinsight  
-**Deployment:** https://cvinsight-io.streamlit.app — **DOWN (OOM)**  
+**Deployment:** Streamlit Community Cloud — **DOWN (OOM)**, runs locally with `streamlit run app/app.py`  
 **Python:** 3.14.6 (Cloud) / 3.14.3 (local)  
 **Overall Completion:** ~98% (code), 0% (deployment)
 
@@ -137,6 +137,21 @@ Two runtime crashes fixed in `src/parser/ocr_parser.py`:
 | Key data (phone, dates, names) | All correct | Phone correct; dates mostly ok |
 
 **Verdict**: easyOCR is usable but significantly less accurate than tesseract. Line-structure collapse is the fundamental limitation — pipe-separated compound fields fragment into independent lines, confusing the rule-based section parser. ~60% of scanned CVs will extract partially.
+
+### UI Overhaul (2026-07-17)
+
+Complete Streamlit UI rewrite in `app/app.py`:
+
+| Feature | Before | After |
+|---------|--------|-------|
+| Header | Plain `st.title()` | Branded doc icon + "CV-Insight" title + purple accent subtitle |
+| Upload area | Raw `st.file_uploader` | Dashed-border container with cloud icon, "Drag & drop" text |
+| Tips | None | Side-by-side tips column with checkmark list |
+| Pipeline | Text markdown list | 5 horizontal steps with icons + arrow connectors |
+| Section scores | Progress bars (rows) | Color-coded mini-cards with score + thin progress bar |
+| Key strengths | Not shown | Auto-extracted card (skills, experience, education, projects) |
+| Clear state | Sidebar button only | Top-right "Clear All" button + sidebar "Clear History" |
+| Sidebar model info | Text only | Card with green checkmark + "Online" indicator + help widget |
 
 ### Deployment Status — CRITICAL FAILURE (2026-07-17)
 

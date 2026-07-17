@@ -1,6 +1,6 @@
-# TODO — CV Evaluator & Ranking System
+# TODO — CV-Insight
 
-Last updated: 2026-07-17 | Deployed: https://cvinsight-io.streamlit.app | Tests: 343 passing
+Last updated: 2026-07-17 | App: `streamlit run app/app.py` | Tests: 343 passing
 
 ---
 
@@ -9,10 +9,7 @@ Last updated: 2026-07-17 | Deployed: https://cvinsight-io.streamlit.app | Tests:
 **Week 6 — JD Matching & Ranking (V2)**
 Add job description matching, semantic similarity, skill overlap, and CV ranking to the Streamlit app.
 
-**Deployed:** Streamlit Community Cloud (https://cvinsight-io.streamlit.app)
-- **Status: DOWN** — App crashes on startup with OOM (1GB RAM limit exceeded)
-- Root cause: torch (CUDA) + easyocr + spaCy + XGBoost + matplotlib exceed 1GB RAM during process startup/lazy loading
-- Fix requires: Docker-capable host (Render.com, Railway) or reducing memory footprint
+**Deployment:** Streamlit Community Cloud — **DOWN (OOM)**. 1GB RAM insufficient for torch + easyocr + spaCy + XGBoost. App runs locally with `streamlit run app/app.py`.
 
 ---
 
@@ -114,15 +111,27 @@ Hardware: RTX 5070 Ti (local inference & training).
 
 ---
 
-## Recent Fixes (2026-07-17)
+## Completed — UI Overhaul (2026-07-17)
 
-- [x] **easyocr crash #1**: `_preprocess_for_ocr()` returned PIL Image — easyocr's `readtext()` only accepts numpy array. Fixed: return `np.array(img, dtype=np.uint8)`.
-- [x] **easyocr crash #2**: `detail=1` returns `(bbox, text, conf)` tuples, code destructured as `(text, conf)` → `TypeError`. Fixed: `for bbox, text, conf in results`.
-- [x] **Preprocessing**: Removed hard binarization (easyocr CNN works better on natural gradients). Softer autocontrast + contrast + sharpen only.
-- [x] **`_fix_easyocr_errors()`**: Added digit context patterns — O→0 between digits, l→1 at number endings.
-- [x] **Comparison test**: tesseract (1973 chars) vs easyocr (1900 chars) on `demo/ocrtest.pdf`. Key easyocr weaknesses: line-structure collapse (missing pipes → fragmented lines), punctuation loss (`.`, `@`, `|`), character confusions (`t`↔`l`, `n`→`m`).
-- [x] **All 343 tests passing** locally.
-- [x] **Deployment blocked**: Streamlit Cloud 1GB RAM insufficient for torch + easyocr + spaCy + XGBoost. App crashes on startup with OOM. Need Docker-capable host (Render.com/Railway) to proceed.
+- [x] **Branded header** — document icon + "CV-Insight" title + "AI-Powered CV Scorer & Job Description Matcher" subtitle
+- [x] **Styled upload area** — dashed-border container with cloud icon, side-by-side tips column with best-results checklist
+- [x] **Pipeline visualization** — 5 horizontal step boxes (Parse → Extract → Score → Classify → Suggest) with arrow connectors
+- [x] **Custom rubric weights** — sliders per section in sidebar, custom config passed to `score_cv()` via tempfile
+- [x] **Section mini-cards** — color-coded score cards with progress bars, green/yellow/red by percentage
+- [x] **Key strengths card** — auto-extracted from CV (skills, experience, education, projects, certifications, languages)
+- [x] **Structured data tables** — pandas DataFrames for experience/education/projects with columns
+- [x] **Session history** — last 5 results in sidebar + dedicated tab, Clear All button
+- [x] **Processing stage indicators** — `st.status()` with step-by-step progress, collapses on completion
+- [x] **Top-right Clear All** — resets session state
+
+## Bug Fixes (2026-07-16)
+
+- [x] **easyocr crash #1**: `_preprocess_for_ocr()` returned PIL Image — easyocr's `readtext()` only accepts numpy array
+- [x] **easyocr crash #2**: `detail=1` returns `(bbox, text, conf)` tuples, code destructured as `(text, conf)` → `TypeError`
+- [x] **Preprocessing**: Removed hard binarization, softer autocontrast + contrast + sharpen only
+- [x] **`_fix_easyocr_errors()`**: Added digit context patterns — O→0 between digits, l→1 at number endings
+- [x] **Comparison test**: tesseract (1973 chars) vs easyocr (1900 chars) on `demo/ocrtest.pdf`
+- [x] **All 343 tests passing** locally
 
 ## Recently Completed
 
