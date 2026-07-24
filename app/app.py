@@ -561,15 +561,6 @@ def main():
         use_custom_weights = st.checkbox("Apply custom weights", value=(total != 100))
 
         st.divider()
-        st.markdown(
-            f"<div style='border:{BORDER}; border-radius:0.75rem; padding:0.75rem; "
-            f"font-size:0.85rem;'>"
-            f"<div style='font-weight:600; margin-bottom:0.25rem;'>Need help?</div>"
-            f"<div style='color:{MUTED}; margin-bottom:0.5rem;'>Upload a CV and get instant analysis.</div>"
-            f"<a href='#' style='color:{PURPLE}; text-decoration:none; font-weight:500;'>Check our guide &rarr;</a>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
 
         if st.button("\U0001F5D1 Clear Database"):
             st.session_state.cv_database = {}
@@ -618,12 +609,13 @@ def main():
 
     # --- Processing ---
     if uploaded_files:
+        session_seen = set(st.session_state.session_uploads)
         new_files = []
         for f in uploaded_files:
             content = f.read()
             f.seek(0)
             cid = hashlib.md5(content).hexdigest()[:12]
-            if cid not in st.session_state.cv_database:
+            if cid not in session_seen:
                 new_files.append(f)
 
         if new_files:
@@ -761,25 +753,32 @@ def main():
         total_score = cv.get("total_score", 0)
         rubric_label = cv.get("label", "Unknown")
 
-        # --- Session CV selector ---
+        # --- Session CV picker ---
+        picker_labels = []
         if st.session_state.session_uploads:
-            labels = []
             for scid in st.session_state.session_uploads:
                 if scid in st.session_state.cv_database:
                     e = st.session_state.cv_database[scid]
-                    n = e["cv"].get("name", "Unknown") or "Unknown"
+                    n = (e["cv"].get("name") or "Unknown")
                     s = e["cv"].get("total_score", 0)
-                    labels.append((f"{n}  \u2014  {s:.0f}/100", scid))
-            if len(labels) > 1:
+                    picker_labels.append((f"{n}  \u2014  {s:.0f}/100", scid))
+        if len(picker_labels) > 1:
+            cols = st.columns([1, 2, 6])
+            with cols[0]:
+                st.markdown(f"<div style='font-size:1.25rem; font-weight:700;'>\U0001F4CA Results</div>", unsafe_allow_html=True)
+            with cols[1]:
                 cur = st.session_state.active_cv_id
-                default_idx = next((i for i, (_, c) in enumerate(labels) if c == cur), 0)
-                pick = st.selectbox("Switch CV:", [l for l, _ in labels], index=default_idx, key="session_cv_picker")
-                picked = dict(labels)[pick]
-                if picked != cur:
-                    st.session_state.cv_cache = st.session_state.cv_database[picked]
-                    st.session_state.active_cv_id = picked
+                idx = next((i for i, (_, c) in enumerate(picker_labels) if c == cur), 0)
+                selected = st.selectbox("", [l for l, _ in picker_labels], index=idx, key="session_cv_picker")
+                picked_cid = dict(picker_labels)[selected]
+                if picked_cid != cur:
+                    st.session_state.cv_cache = st.session_state.cv_database[picked_cid]
+                    st.session_state.active_cv_id = picked_cid
                     st.rerun()
-        st.subheader("\U0001F4CA Results")
+            with cols[2]:
+                st.empty()
+        else:
+            st.markdown(f"<div style='font-size:1.25rem; font-weight:700;'>\U0001F4CA Results</div>", unsafe_allow_html=True)
         kpi_cols = st.columns(4)
         with kpi_cols[0]:
             render_metric_card(

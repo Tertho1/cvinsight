@@ -231,12 +231,12 @@ def ocr_pdf_easyocr(path: str, scale: float = 3.0, min_confidence: float = 0.3,
     for i in range(total_pages):
         try:
             page = pdf[i]
-            bitmap = page.render(scale=scale)
+            bitmap = page.render(scale=int(scale))
             pil_image = bitmap.to_pil()
             processed = _preprocess_for_ocr(pil_image)
             results = reader.readtext(processed, detail=1, paragraph=False)
 
-            filtered = [text for text, conf in results if conf >= min_confidence]
+            filtered = [text for bbox, text, conf in results if float(conf) >= min_confidence]
             page_text = "\n".join(filtered)
             page_text = _fix_easyocr_errors(page_text)
             page_texts.append(page_text)
@@ -301,10 +301,10 @@ def ocr_pdf(path: str, dpi: int = 300) -> str:
 
     poppler_path = _get_poppler_path()
     try:
-        kwargs = {"dpi": dpi}
         if poppler_path:
-            kwargs["poppler_path"] = poppler_path
-        images = convert_from_path(str(pdf_path), **kwargs)
+            images = convert_from_path(str(pdf_path), dpi=dpi, poppler_path=poppler_path)
+        else:
+            images = convert_from_path(str(pdf_path), dpi=dpi)
     except Exception as e:
         logger.error(f"pdf2image failed to convert {pdf_path.name}: {e}")
         return ""
