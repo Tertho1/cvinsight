@@ -773,7 +773,7 @@ def main():
             if len(labels) > 1:
                 cur = st.session_state.active_cv_id
                 default_idx = next((i for i, (_, c) in enumerate(labels) if c == cur), 0)
-                pick = st.selectbox("", [l for l, _ in labels], index=default_idx, key="session_cv_picker", label_visibility="collapsed")
+                pick = st.selectbox("Switch CV:", [l for l, _ in labels], index=default_idx, key="session_cv_picker")
                 picked = dict(labels)[pick]
                 if picked != cur:
                     st.session_state.cv_cache = st.session_state.cv_database[picked]
