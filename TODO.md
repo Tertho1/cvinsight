@@ -1,6 +1,6 @@
 # TODO — CV-Insight
 
-Last updated: 2026-07-18 | App: `streamlit run app/app.py` | Tests: 361 passing
+Last updated: 2026-07-24 | App: `streamlit run app/app.py` | Tests: 361 passing
 
 ---
 
@@ -11,7 +11,7 @@ These items were selected from the V2 platform proposals (archived in `project_p
 - [ ] **Dynamic `criteria_scores`** — replace fixed 7-section rubric with a configurable criteria list loaded from `config/default_criteria.json`. Each criterion has independent weight, `method` tag, and `rationale`. Scorer reads from config, not hardcoded keys.
 - [ ] **Score rationales** — every criterion score includes a human-readable rationale string. Objective scores use template strings (e.g. "8 years experience → 10/10"), no LLM needed.
 - [ ] **Schema update** — `section_scores` → `criteria_scores` list; add `method`, `rationale`, `overridden_by` to each entry; rename `jd_match` → `match`
-- [ ] **Multi-CV comparison view** — simple side-by-side table in Personal Mode when multiple CVs uploaded, same categories as rows
+- [x] **Multi-CV comparison view** — simple side-by-side table in Personal Mode when multiple CVs uploaded, same categories as rows
 
 ### Future (Deferred — see project_plan.md Appendix A)
 
@@ -24,7 +24,7 @@ These items were selected from the V2 platform proposals (archived in `project_p
 
 ---
 
-## Recent Improvements (2026-07-18)
+## Recent Improvements (2026-07-24)
 
 - [x] **`src/matcher/embedder.py`** — lazy-loaded `multi-qa-MiniLM-L6-cos-v1`, added `embed_texts()` batch method
 - [x] **`src/matcher/semantic_scorer.py`** — cosine similarity with empty-text guards
@@ -42,6 +42,12 @@ These items were selected from the V2 platform proposals (archived in `project_p
 - [x] **Hidden native elements** — label, Upload button span, drag-drop instructions, file chips all hidden
 - [x] **All skills displayed** — scrollable text_area instead of truncated first-15
 - [x] **Borders** — 2–3px rgba(128,128,128,0.35) for visibility on both themes
+- [x] **Batch upload** — `accept_multiple_files=True` on uploader, progress bar, serial processing loop
+- [x] **Persistent CV database** — `data/processed/cv_database.json`, auto-save after each analysis, load on startup
+- [x] **Comparison table** — "All CVs" tab with sortable DataFrame (Name, Score, Label, Skills, Experience, Education)
+- [x] **Skill search** — "Skill Search" tab with AND/OR modes, matches against extracted skills across all stored CVs
+- [x] **CV selection** — click-to-view-detail from comparison table or skill search results, loads into existing KPI/section/tab UI
+- [x] **Cross-session persistence** — CV database survives page reloads; Clear Database button in sidebar
 
 ## Current Priority
 

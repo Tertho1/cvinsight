@@ -14,6 +14,7 @@ Features:
 - Session history (last 5 results)
 """
 
+import hashlib
 import json
 import os
 import subprocess
@@ -21,6 +22,7 @@ import sys
 import tempfile
 import textwrap
 import warnings
+from datetime import datetime
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -39,6 +41,7 @@ LR_PATH = os.path.join(MODELS_DIR, "lr_baseline.pkl")
 DEFAULT_RUBRIC_PATH = os.path.join(CONFIG_DIR, "rubric_config.json")
 MAX_FILE_MB = 50
 PARSE_TIMEOUT = 180
+DATABASE_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "cv_database.json")
 PURPLE = "#818cf8"
 GREEN = "#34d399"
 AMBER = "#fbbf24"
@@ -51,6 +54,80 @@ LABEL_COLORS = {
     "Average": AMBER,
     "Weak": RED,
 }
+
+
+def load_database() -> dict:
+    try:
+        if os.path.exists(DATABASE_PATH):
+            with open(DATABASE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except (json.JSONDecodeError, Exception):
+        pass
+    return {}
+
+
+def save_database(db: dict) -> None:
+    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+    with open(DATABASE_PATH, "w", encoding="utf-8") as f:
+        json.dump(db, f, indent=2, default=str)
+
+
+def build_comparison_df(db: dict) -> pd.DataFrame:
+    rows = []
+    for cid, entry in db.items():
+        cv = entry.get("cv", {})
+        rows.append({
+            "cv_id": cid,
+            "Name": cv.get("name", "Unknown"),
+            "Score": cv.get("total_score", 0),
+            "Label": cv.get("label", ""),
+            "Skills": len(cv.get("skills", [])),
+            "Experience": len(cv.get("experience", [])),
+            "Education": len(cv.get("education", [])),
+            "Projects": len(cv.get("projects", [])),
+            "Filename": entry.get("filename", ""),
+            "Date": entry.get("timestamp", "")[:10] if entry.get("timestamp") else "",
+        })
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    df = df.sort_values("Score", ascending=False).reset_index(drop=True)
+    return df
+
+
+def build_detailed_export_df(db: dict) -> pd.DataFrame:
+    rows = []
+    for cid, entry in db.items():
+        cv = entry.get("cv", {})
+        jd = entry.get("jd_match") or {}
+        rows.append({
+            "Name": cv.get("name", ""),
+            "Email": cv.get("email", ""),
+            "Phone": cv.get("phone", ""),
+            "Score": cv.get("total_score", 0),
+            "Label": cv.get("label", ""),
+            "Skills": ", ".join(cv.get("skills", [])),
+            "Experience": "; ".join(
+                f"{e.get('title','')} @ {e.get('company','')}"
+                for e in cv.get("experience", []) if e.get('title') or e.get('company')
+            ),
+            "Education": "; ".join(
+                f"{e.get('degree','')} @ {e.get('institution','')}"
+                for e in cv.get("education", []) if e.get('degree') or e.get('institution')
+            ),
+            "Projects": "; ".join(p.get("name", "") for p in cv.get("projects", []) if p.get("name")),
+            "Certifications": "; ".join(c.get("name", "") for c in cv.get("certifications", []) if c.get("name")),
+            "Languages": "; ".join(l.get("language", "") for l in cv.get("languages", []) if l.get("language")),
+            "JD Match %": round(jd.get("final_match_score", 0) * 100, 1),
+            "Missing Skills": ", ".join(jd.get("missing_skills", [])),
+            "Filename": entry.get("filename", ""),
+            "Date": entry.get("timestamp", "")[:10] if entry.get("timestamp") else "",
+        })
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    df = df.sort_values("Score", ascending=False).reset_index(drop=True)
+    return df
 
 
 def _section_color(score, max_pts):
@@ -402,10 +479,14 @@ def main():
         unsafe_allow_html=True,
     )
 
-    if "history" not in st.session_state:
-        st.session_state.history = []
+    if "cv_database" not in st.session_state:
+        st.session_state.cv_database = load_database()
+    if "active_cv_id" not in st.session_state:
+        st.session_state.active_cv_id = None
     if "cv_cache" not in st.session_state:
         st.session_state.cv_cache = None
+    if "session_uploads" not in st.session_state:
+        st.session_state.session_uploads = []
 
     # --- Top bar ---
     top_cols = st.columns([6, 1])
@@ -421,8 +502,10 @@ def main():
         )
     with top_cols[1]:
         if st.button("\U0001F5D1 Clear All", type="secondary"):
-            st.session_state.history = []
+            st.session_state.cv_database = {}
             st.session_state.cv_cache = None
+            st.session_state.active_cv_id = None
+            save_database({})
             st.rerun()
 
     st.markdown(
@@ -488,16 +571,20 @@ def main():
             unsafe_allow_html=True,
         )
 
-        if st.button("\U0001F5D1 Clear History"):
-            st.session_state.history = []
+        if st.button("\U0001F5D1 Clear Database"):
+            st.session_state.cv_database = {}
+            st.session_state.cv_cache = None
+            st.session_state.active_cv_id = None
+            save_database({})
             st.rerun()
 
     # --- Upload + JD ---
     upload_col, jd_col = st.columns(2)
 
     with upload_col:
-        uploaded_file = st.file_uploader(
-            "Upload CV", type=["pdf", "docx", "txt"],
+        uploaded_files = st.file_uploader(
+            "Upload CVs", type=["pdf", "docx", "txt"],
+            accept_multiple_files=True,
             label_visibility="collapsed",
         )
 
@@ -529,101 +616,129 @@ def main():
     render_pipeline()
 
     # --- Processing ---
-    if uploaded_file is not None:
-        file_size_mb = uploaded_file.size / (1024 * 1024)
-        if file_size_mb > MAX_FILE_MB:
-            st.error(f"File too large ({file_size_mb:.1f} MB). Max {MAX_FILE_MB} MB.")
-            st.stop()
+    if uploaded_files:
+        new_files = []
+        for f in uploaded_files:
+            content = f.read()
+            f.seek(0)
+            cid = hashlib.md5(content).hexdigest()[:12]
+            if cid not in st.session_state.cv_database:
+                new_files.append(f)
 
-        suffix = os.path.splitext(uploaded_file.name)[1]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(uploaded_file.read())
-            tmp_path = tmp.name
-
-        status = st.status("Processing CV...", expanded=True)
-
-        with status:
-            st.write("\U0001F4E5 Parsing file...")
+        if new_files:
             parse_cv, split_sections, extract_all, score_cv_fn, generate_suggestions = (
                 get_parser_extractor_scorer()
             )
+            progress_bar = st.progress(0, text="Ready")
+            for i, f in enumerate(new_files):
+                content = f.read()
+                cid = hashlib.md5(content).hexdigest()[:12]
+                msg = f"Processing {f.name} ({i+1}/{len(new_files)})"
+                progress_bar.progress((i) / len(new_files), text=msg)
 
-            raw_text = safe_parse_cv(tmp_path) if suffix.lower() == ".pdf" else parse_cv(tmp_path)
-            if not raw_text or len(raw_text.strip()) < 20:
-                st.error("Could not extract text.")
-                os.unlink(tmp_path)
-                st.stop()
+                file_size_mb = f.size / (1024 * 1024)
+                if file_size_mb > MAX_FILE_MB:
+                    st.warning(f"Skipping {f.name}: too large ({file_size_mb:.1f} MB).")
+                    continue
 
-            st.write("\U0001F50D Extracting entities...")
-            sections = split_sections(raw_text)
-            cv = extract_all(raw_text, sections=sections)
-            if not cv:
-                st.error("Extraction failed.")
-                os.unlink(tmp_path)
-                st.stop()
+                suffix = os.path.splitext(f.name)[1]
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
 
-            st.write("\U0001F3AF Scoring...")
-            if use_custom_weights and total > 0:
-                custom_config = make_custom_config(rubric_config, custom_weights)
-                tmp_config = tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".json", delete=False, encoding="utf-8"
-                )
-                json.dump(custom_config, tmp_config)
-                tmp_config_path = tmp_config.name
-                tmp_config.close()
-                cv = score_cv_fn(cv, config_path=tmp_config_path)
-                os.unlink(tmp_config_path)
-            else:
-                cv = score_cv_fn(cv)
+                status = st.status(f"Processing {f.name}...", expanded=(i == 0))
 
-            st.write("\U0001F4A1 Generating suggestions...")
-            suggestions = generate_suggestions(cv)
+                with status:
+                    st.write("\U0001F4E5 Parsing file...")
+                    raw_text = safe_parse_cv(tmp_path) if suffix.lower() == ".pdf" else parse_cv(tmp_path)
+                    if not raw_text or len(raw_text.strip()) < 20:
+                        st.warning(f"Could not extract text from {f.name}.")
+                        os.unlink(tmp_path)
+                        continue
 
-            ml_label = None
-            ml_proba = None
-            if model_pipeline:
-                ml_label, ml_proba = classify_text(model_pipeline, raw_text)
+                    st.write("\U0001F50D Extracting entities...")
+                    sections = split_sections(raw_text)
+                    cv = extract_all(raw_text, sections=sections)
+                    if not cv:
+                        st.warning(f"Extraction failed for {f.name}.")
+                        os.unlink(tmp_path)
+                        continue
 
-            jd_match_result = None
-            current_jd = st.session_state.get("_jd_text", "")
-            if current_jd and current_jd.strip():
-                st.write("\U0001F4CB Matching against job description...")
-                try:
-                    from src.matcher.ranker import match_cv
-                    skills = cv.get("skills", [])
-                    raw_for_match = raw_text
-                    jd_match_result = match_cv(
-                        cv_text=raw_for_match,
-                        cv_skills=skills,
-                        jd_text=current_jd.strip(),
-                        rubric_score=cv.get("total_score", 0),
-                    )
-                    st.session_state["_last_matched_jd"] = current_jd.strip()
-                except Exception as e:
-                    st.warning(f"JD matching failed: {e}")
+                    st.write("\U0001F3AF Scoring...")
+                    if use_custom_weights and total > 0:
+                        custom_config = make_custom_config(rubric_config, custom_weights)
+                        tmp_config = tempfile.NamedTemporaryFile(
+                            mode="w", suffix=".json", delete=False, encoding="utf-8"
+                        )
+                        json.dump(custom_config, tmp_config)
+                        tmp_config_path = tmp_config.name
+                        tmp_config.close()
+                        cv = score_cv_fn(cv, config_path=tmp_config_path)
+                        os.unlink(tmp_config_path)
+                    else:
+                        cv = score_cv_fn(cv)
+
+                    st.write("\U0001F4A1 Generating suggestions...")
+                    suggestions = generate_suggestions(cv)
+
+                    ml_label = None
+                    ml_proba = None
+                    if model_pipeline:
+                        ml_label, ml_proba = classify_text(model_pipeline, raw_text)
+
                     jd_match_result = None
+                    current_jd = st.session_state.get("_jd_text", "")
+                    if current_jd and current_jd.strip():
+                        st.write("\U0001F4CB Matching against job description...")
+                        try:
+                            from src.matcher.ranker import match_cv
+                            skills = cv.get("skills", [])
+                            jd_match_result = match_cv(
+                                cv_text=raw_text, cv_skills=skills,
+                                jd_text=current_jd.strip(),
+                                rubric_score=cv.get("total_score", 0),
+                            )
+                            st.session_state["_last_matched_jd"] = current_jd.strip()
+                        except Exception as e:
+                            st.warning(f"JD matching failed for {f.name}: {e}")
+                            jd_match_result = None
 
-        os.unlink(tmp_path)
-        status.update(label="Complete!", state="complete", expanded=False)
+                os.unlink(tmp_path)
+                status.update(label=f"Done: {f.name}", state="complete", expanded=False)
 
-        st.session_state.cv_cache = {
-            "raw_text": raw_text,
-            "cv": cv,
-            "suggestions": suggestions,
-            "ml_label": ml_label,
-            "ml_proba": ml_proba,
-            "jd_match": jd_match_result,
-        }
+                cv_name = cv.get("name", f.name) or f.name
+                st.session_state.cv_database[cid] = {
+                    "filename": f.name,
+                    "timestamp": datetime.now().isoformat(),
+                    "raw_text": raw_text,
+                    "cv": cv,
+                    "suggestions": suggestions,
+                    "ml_label": ml_label,
+                    "ml_proba": ml_proba.tolist() if hasattr(ml_proba, 'tolist') else ml_proba,
+                    "jd_match": jd_match_result,
+                }
+                st.session_state.session_uploads.append(cid)
+                st.session_state.cv_cache = st.session_state.cv_database[cid]
+                st.session_state.active_cv_id = cid
 
-    # --- Results (from cache or fresh) ---
-    if st.session_state.cv_cache is not None:
-        cache = st.session_state.cv_cache
-        raw_text = cache["raw_text"]
-        cv = cache["cv"]
-        suggestions = cache["suggestions"]
-        ml_label = cache["ml_label"]
-        ml_proba = cache["ml_proba"]
-        jd_match = cache.get("jd_match")
+            progress_bar.progress(1.0, text=f"Processed {len(new_files)} CV(s)!")
+            save_database(st.session_state.cv_database)
+
+    # --- Results ---
+    show_detail = st.session_state.cv_cache is not None
+
+    # --- Detail View ---
+    if st.session_state.cv_cache is not None and st.session_state.active_cv_id in st.session_state.cv_database:
+        entry = st.session_state.cv_cache
+        db = st.session_state.cv_database
+        raw_text = entry["raw_text"]
+        cv = entry["cv"]
+        suggestions = entry["suggestions"]
+        ml_label = entry["ml_label"]
+        ml_proba = entry.get("ml_proba")
+        if isinstance(ml_proba, str):
+            ml_proba = None
+        jd_match = entry.get("jd_match")
 
         current_jd = st.session_state.get("_jd_text", "")
         last_matched = st.session_state.get("_last_matched_jd", "")
@@ -637,28 +752,38 @@ def main():
                     jd_text=current_jd.strip(),
                     rubric_score=cv.get("total_score", 0),
                 )
-                cache["jd_match"] = jd_match
+                entry["jd_match"] = jd_match
                 st.session_state["_last_matched_jd"] = current_jd.strip()
             except Exception as e:
-                jd_match = cache.get("jd_match")
+                jd_match = entry.get("jd_match")
 
         total_score = cv.get("total_score", 0)
         rubric_label = cv.get("label", "Unknown")
 
-        fname = uploaded_file.name if uploaded_file else "N/A"
-        existing_names = {e["filename"] for e in st.session_state.history}
-        if fname not in existing_names:
-            entry = {
-                "filename": fname,
-                "total_score": total_score,
-                "rubric_label": rubric_label,
-                "ml_label": ml_label,
-            }
-            st.session_state.history.insert(0, entry)
-            st.session_state.history = st.session_state.history[:5]
-
-        # --- KPI row ---
-        st.subheader("\U0001F4CA Results")
+        # --- Session CV selector ---
+        if st.session_state.session_uploads:
+            cols = st.columns([1, 3])
+            with cols[0]:
+                st.subheader("\U0001F4CA Results")
+            with cols[1]:
+                options = {}
+                for scid in st.session_state.session_uploads:
+                    if scid in db:
+                        e = db[scid]
+                        n = e["cv"].get("name", "Unknown") or "Unknown"
+                        s = e["cv"].get("total_score", 0)
+                        options[f"{n}  \u2014  {s:.0f}/100"] = scid
+                if options:
+                    current_key = st.session_state.active_cv_id
+                    default_idx = list(options.values()).index(current_key) if current_key in options.values() else 0
+                    pick = st.selectbox("", list(options.keys()), index=default_idx, label_visibility="collapsed")
+                    picked_cid = options[pick]
+                    if picked_cid != st.session_state.active_cv_id:
+                        st.session_state.cv_cache = db[picked_cid]
+                        st.session_state.active_cv_id = picked_cid
+                        st.rerun()
+        else:
+            st.subheader("\U0001F4CA Results")
         kpi_cols = st.columns(4)
         with kpi_cols[0]:
             render_metric_card(
@@ -671,9 +796,10 @@ def main():
             if ml_label:
                 ml_color = LABEL_COLORS.get(ml_label, "#888")
                 conf_str = ""
-                if ml_proba is not None:
+                if ml_proba is not None and isinstance(ml_proba, (list, tuple)):
                     idx = {"Average": 0, "Strong": 1, "Weak": 2}.get(ml_label, 0)
-                    conf_str = f"Confidence: {ml_proba[idx]:.1%}"
+                    if idx < len(ml_proba):
+                        conf_str = f"Confidence: {ml_proba[idx]:.1%}"
                 render_metric_card("ML CLASSIFICATION", ml_label, conf_str, ml_color)
             else:
                 render_metric_card("ML CLASSIFICATION", "\u2014", "No model", "#888")
@@ -711,8 +837,9 @@ def main():
             "\U0001F4CB Extracted Data",
             "\U0001F4A1 Suggestions",
             "\U0001F4DD Raw Text",
-            "\U0001F4CA History",
+            "\U0001F4C2 History",
             "\U0001F91D JD Match",
+            "\U0001F50D Skill Search",
         ])
 
         with tabs[0]:
@@ -758,12 +885,69 @@ def main():
         with tabs[2]:
             st.text_area("Extracted text", raw_text, height=250, label_visibility="collapsed")
 
-        with tabs[3]:
-            if st.session_state.history:
-                hist_df = pd.DataFrame(st.session_state.history)
-                st.dataframe(hist_df, width='stretch', hide_index=True)
+        with tabs[3]:  # History — CV selector + comparison table
+            if db:
+                sort_col, _ = st.columns([1, 3])
+                with sort_col:
+                    sort_by = st.selectbox("Sort by:", ["Rubric Score", "JD Match"], key="history_sort")
+                cv_items = list(db.items())
+                for _cid, e in cv_items:
+                    if sort_by == "JD Match":
+                        jd = e.get("jd_match") or {}
+                        e["_sort_score"] = jd.get("final_match_score", 0) * 100
+                    else:
+                        e["_sort_score"] = e["cv"]["total_score"]
+                cv_items.sort(key=lambda x: x[1]["_sort_score"], reverse=True)
+
+                radio_labels = {}
+                for _cid, e in cv_items:
+                    name = e["cv"].get("name", "Unknown") or "Unknown"
+                    score = e["_sort_score"]
+                    label = f"{name}  \u2014  {score:.0f}/100"
+                    radio_labels[label] = _cid
+
+                default_idx = list(radio_labels.values()).index(st.session_state.active_cv_id) if st.session_state.active_cv_id in radio_labels.values() else 0
+                selected_label = st.radio(
+                    "Select CV:", list(radio_labels.keys()),
+                    index=default_idx, key="history_cv_radio", label_visibility="collapsed",
+                )
+                target_cid = radio_labels[selected_label]
+                if target_cid != st.session_state.active_cv_id:
+                    st.session_state.cv_cache = db[target_cid]
+                    st.session_state.active_cv_id = target_cid
+                    st.rerun()
+
+                st.divider()
+                filter_q = st.text_input("Filter by name:", "", key="cv_filter", placeholder="Type to filter...")
+                df = build_comparison_df(db)
+                if filter_q:
+                    df = df[df["Name"].str.lower().str.contains(filter_q.lower(), na=False)]
+                st.dataframe(df, width='stretch', hide_index=True, use_container_width=True)
+                st.caption(f"{len(db)} CV(s) total")
+
+                st.divider()
+                dl_cols = st.columns(2)
+                with dl_cols[0]:
+                    all_json = json.dumps(
+                        {cid: e.get("cv", {}) for cid, e in db.items()},
+                        indent=2, default=str,
+                    )
+                    st.download_button(
+                        label="\U0001F4E5 All CVs (JSON)",
+                        data=all_json,
+                        file_name="all_cvs_analysis.json",
+                        mime="application/json",
+                    )
+                with dl_cols[1]:
+                    csv_data = build_detailed_export_df(db).to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        label="\U0001F4C4 All CVs (CSV)",
+                        data=csv_data,
+                        file_name="all_cvs_data.csv",
+                        mime="text/csv",
+                    )
             else:
-                st.info("No previous analyses in this session.")
+                st.info("No CVs in database.")
 
         with tabs[4]:
             if jd_match:
@@ -806,26 +990,74 @@ def main():
             else:
                 st.info("Paste a job description in the JD field above and re-upload the CV to see match results.")
 
+        with tabs[5]:  # Skill Search
+            if db:
+                query = st.text_input(
+                    "Search by skill(s):",
+                    placeholder="e.g. Python, Django, React",
+                    key="skill_search_input",
+                )
+                mode = st.radio("Match mode:", ["ALL (AND)", "ANY (OR)"], horizontal=True, key="skill_search_mode")
+                if query:
+                    query_skills = {s.strip().lower() for s in query.split(",") if s.strip()}
+                    results = []
+                    for cid, entry in db.items():
+                        cv_s = entry.get("cv", {}).get("skills", [])
+                        cv_skills_lower = {s.lower().strip() for s in cv_s}
+                        matched_skills = query_skills & cv_skills_lower
+                        if mode.startswith("ALL"):
+                            if matched_skills == query_skills:
+                                missing = query_skills - cv_skills_lower
+                                results.append((cid, entry, matched_skills, missing))
+                        else:
+                            if matched_skills:
+                                results.append((cid, entry, matched_skills, set()))
+
+                    if results:
+                        st.write(f"**{len(results)}** CV(s) match:")
+                        rows = []
+                        for cid, entry, matched_skills, missing in results:
+                            cv_d = entry.get("cv", {})
+                            rows.append({
+                                "Name": cv_d.get("name", "Unknown"),
+                                "Score": cv_d.get("total_score", 0),
+                                "Matched Skills": ", ".join(sorted(matched_skills)),
+                                "Missing": ", ".join(sorted(missing)) if missing else "",
+                            })
+                        res_df = pd.DataFrame(rows)
+                        st.dataframe(res_df, width='stretch', hide_index=True, use_container_width=True)
+
+                        search_names = [r["Name"] for r in rows]
+                        search_cids = [r[0] for r in results]
+                        pick = st.selectbox("Jump to CV:", [""] + search_names, key="skill_search_pick")
+                        if pick:
+                            pk_idx = search_names.index(pick)
+                            pk_cid = search_cids[pk_idx]
+                            if pk_cid != st.session_state.active_cv_id:
+                                st.session_state.cv_cache = db[pk_cid]
+                                st.session_state.active_cv_id = pk_cid
+                                st.rerun()
+                    else:
+                        st.info("No CVs match the specified skills.")
+                else:
+                    st.caption("Enter comma-separated skills above to search across all analyzed CVs.")
+            else:
+                st.info("No CVs in database. Upload CVs to search them.")
+
         st.divider()
         col_dl, _ = st.columns([1, 4])
         with col_dl:
             cv_json = json.dumps(cv, indent=2, default=str)
-            fname = uploaded_file.name if uploaded_file else "cv_analysis"
+            cur_name = os.path.splitext(entry.get("filename", "cv_analysis"))[0]
             st.download_button(
-                label="\U0001F4E5 Download Full Analysis (JSON)",
+                label="\U0001F4E5 This CV (JSON)",
                 data=cv_json,
-                file_name=f"{fname}_analysis.json",
+                file_name=f"{cur_name}_analysis.json",
                 mime="application/json",
             )
 
-    else:
-        st.info("Upload a CV to begin analysis.")
-
-        if st.session_state.history:
-            st.divider()
-            st.subheader("\U0001F4CA Session History")
-            hist_df = pd.DataFrame(st.session_state.history)
-            st.dataframe(hist_df, width='stretch', hide_index=True)
+    elif not st.session_state.cv_database:
+        st.info("Upload CVs to begin analysis.")
 
 
 if __name__ == "__main__":
