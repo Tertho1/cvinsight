@@ -586,6 +586,7 @@ def main():
             "Upload CVs", type=["pdf", "docx", "txt"],
             accept_multiple_files=True,
             label_visibility="collapsed",
+            key="cv_uploader",
         )
 
     with jd_col:
@@ -762,28 +763,23 @@ def main():
 
         # --- Session CV selector ---
         if st.session_state.session_uploads:
-            cols = st.columns([1, 3])
-            with cols[0]:
-                st.subheader("\U0001F4CA Results")
-            with cols[1]:
-                options = {}
-                for scid in st.session_state.session_uploads:
-                    if scid in db:
-                        e = db[scid]
-                        n = e["cv"].get("name", "Unknown") or "Unknown"
-                        s = e["cv"].get("total_score", 0)
-                        options[f"{n}  \u2014  {s:.0f}/100"] = scid
-                if options:
-                    current_key = st.session_state.active_cv_id
-                    default_idx = list(options.values()).index(current_key) if current_key in options.values() else 0
-                    pick = st.selectbox("", list(options.keys()), index=default_idx, label_visibility="collapsed")
-                    picked_cid = options[pick]
-                    if picked_cid != st.session_state.active_cv_id:
-                        st.session_state.cv_cache = db[picked_cid]
-                        st.session_state.active_cv_id = picked_cid
-                        st.rerun()
-        else:
-            st.subheader("\U0001F4CA Results")
+            labels = []
+            for scid in st.session_state.session_uploads:
+                if scid in st.session_state.cv_database:
+                    e = st.session_state.cv_database[scid]
+                    n = e["cv"].get("name", "Unknown") or "Unknown"
+                    s = e["cv"].get("total_score", 0)
+                    labels.append((f"{n}  \u2014  {s:.0f}/100", scid))
+            if len(labels) > 1:
+                cur = st.session_state.active_cv_id
+                default_idx = next((i for i, (_, c) in enumerate(labels) if c == cur), 0)
+                pick = st.selectbox("", [l for l, _ in labels], index=default_idx, key="session_cv_picker", label_visibility="collapsed")
+                picked = dict(labels)[pick]
+                if picked != cur:
+                    st.session_state.cv_cache = st.session_state.cv_database[picked]
+                    st.session_state.active_cv_id = picked
+                    st.rerun()
+        st.subheader("\U0001F4CA Results")
         kpi_cols = st.columns(4)
         with kpi_cols[0]:
             render_metric_card(
