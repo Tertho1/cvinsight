@@ -278,7 +278,7 @@ def extract_leadership(section_text: str) -> list[str]:
                     parsed = val
                     break
                 elif isinstance(val, str):
-                    return [s.strip() for s in val.split("\n") if s.strip()]
+                    return _filter_leadership([val]) if val.strip() else []
         if isinstance(parsed, list):
             result = []
             for item in parsed:
@@ -292,7 +292,25 @@ def extract_leadership(section_text: str) -> list[str]:
                         if v:
                             result.append(str(v).strip())
                             break
-            return result
+            return _filter_leadership(result)
 
     result = [line.strip() for line in section_text.split("\n") if line.strip()]
-    return [r for r in result if r.lower() != "nan"]
+    result = [r for r in result if r.lower() != "nan"]
+    return _filter_leadership(result)
+
+
+_MEMBER_LIKE_STARTS = (
+    "member", "volunteer", "participant", "attended", "server on the",
+    "server",
+)
+
+
+def _filter_leadership(items: list[str]) -> list[str]:
+    """Membership/simple-volunteering is NOT a leadership role; exclude it."""
+    filtered = []
+    for it in items:
+        low = it.lower().strip().lstrip("-*•·–— ")
+        if low.startswith(_MEMBER_LIKE_STARTS):
+            continue
+        filtered.append(it)
+    return filtered

@@ -110,6 +110,7 @@ def _parse_experience_structured(raw: str) -> tuple[list[dict], float]:
             company = company.get("name", "")
         if not isinstance(company, str):
             company = str(company)
+        company = _clean_company(company)
 
         title = entry.get("title", "")
         if not isinstance(title, str):
@@ -209,6 +210,49 @@ def _find_date_range(text: str) -> list[tuple]:
     return results
 
 
+_DATE_START_RE = re.compile(
+    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[.,]?\s+)?(\d{4})",
+    re.IGNORECASE,
+)
+
+_PRESENT_ONLY_RE = re.compile(r"(?:\bPresent\b|\bCurrent\b|\bTill\s+Date\b)", re.IGNORECASE)
+
+
+def _clean_company(company: str) -> str:
+    """Strip location/pipe fragments that get glued onto the company name
+    (e.g. 'TechCorp Inc. | San Francisco, CA |' -> 'TechCorp Inc.')."""
+    if not company:
+        return ""
+    cleaned = company.strip()
+    # Keep only the segment before the first '|' (that pipe usually separates
+    # location/dates we don't want in the company field).
+    cleaned = re.split(r"\s*\|\s*", cleaned)[0]
+    cleaned = cleaned.strip(" .,;/-|")
+    return cleaned
+
+
+def _find_date_range_permissive(text: str) -> list[tuple]:
+    """Fallback used when a CV splits a date range across lines, e.g.
+    'June 2022 ... Google\nPresent ...'. We grab a calendar date and treat a
+    later 'Present'/'current' (or a strictly later year) as the end date."""
+    results = []
+    for m in _DATE_START_RE.finditer(text):
+        start_month, start_year = m.group(1), m.group(2)
+        rest = text[m.end():]
+        present_m = _PRESENT_ONLY_RE.search(rest)
+        yr_m = re.search(r"\b(20\d{2})\b", rest)
+        end_val = None
+        end_pos = None
+        if present_m and (not yr_m or present_m.start() < yr_m.start()):
+            end_val, end_pos = "Present", m.end() + present_m.end()
+        elif yr_m and int(yr_m.group()) > int(start_year):
+            end_val, end_pos = yr_m.group(), m.end() + yr_m.end()
+        if end_val:
+            start_str = f"{start_month} {start_year}" if start_month else start_year
+            results.append((start_str.strip(), end_val, end_pos, m.start()))
+    return results
+
+
 def _parse_title_company(leading_text: str) -> tuple[str, str]:
     """Parse 'Title at Company' or 'Title, Company' or 'Title - Company' patterns."""
     leading = leading_text.strip().strip(".,:;")
@@ -240,6 +284,8 @@ def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
 
     for para in paragraphs:
         dates = _find_date_range(para)
+        if not dates:
+            dates = _find_date_range_permissive(para)
         if not dates:
             continue
 
@@ -278,7 +324,7 @@ def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
                         company = leading_lines[-1].rstrip(" ,;/-")
                         break
         # Clean company name: strip trailing non-alpha chars, newlines, date fragments
-        company = company.rstrip(" ,;/-")
+        company = _clean_company(company)
 
         # Fallback: use ORG entities from paragraph
         if not company:
@@ -287,7 +333,7 @@ def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
                          if ent.label_ == "ORG" and len(ent.text.strip()) >= 2}
             for org in sorted(para_orgs, key=len, reverse=True):
                 if org in para:
-                    company = org
+                    company = _clean_company(org)
                     break
 
         # Description: text after the date range

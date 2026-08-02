@@ -70,6 +70,11 @@ SECTION_ALIASES: dict[str, str] = {
     "internship experience": "experience",
     "industry experience": "experience",
     "relevant experience": "experience",
+    "teaching experience": "experience",
+    "research experience": "experience",
+    "professional roles": "experience",
+    "work placements": "experience",
+    "employment experience": "experience",
 
     # Skills
     "skills": "skills",

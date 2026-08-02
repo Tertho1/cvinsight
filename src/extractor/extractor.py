@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 from src.extractor.contact_extractor import extract_contacts
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,17 @@ def extract_all(text: str, sections: dict, file_bytes: bytes = b"") -> dict:
         logger.warning(f"Certifications extraction failed: {e}")
         certs = []
 
+    # Deduplicate certs by name (duplicated/resume copy-paste inflates the count)
+    _seen_certs: set[str] = set()
+    _certs_uniq: list[dict] = []
+    for c in certs or []:
+        _key = (c.get("name") or "").strip().lower()
+        if _key and _key in _seen_certs:
+            continue
+        _seen_certs.add(_key)
+        _certs_uniq.append(c)
+    certs = _certs_uniq
+
     try:
         languages = extract_languages(sections.get("languages", ""))
     except Exception as e:
@@ -146,6 +158,9 @@ def extract_all(text: str, sections: dict, file_bytes: bytes = b"") -> dict:
                         if item:
                             languages.append({"language": item, "proficiency": None})
 
+    if not languages:
+        languages = extract_languages(sections.get("skills", ""))
+
     try:
         achievements = extract_achievements(sections.get("achievements", ""))
     except Exception as e:
@@ -157,6 +172,23 @@ def extract_all(text: str, sections: dict, file_bytes: bytes = b"") -> dict:
     except Exception as e:
         logger.warning(f"Leadership extraction failed: {e}")
         leadership = []
+
+    # Detect leadership roles that live inside work-experience bullets
+    # (e.g. "Led team of 5 technicians", "Mentored team of 3 juniors").
+    try:
+        _exp_text = sections.get("experience", "")
+        _lead_kw = re.compile(
+            r"\b(?:led|mentored|headed|supervised)\s+(?:a\s+|the\s+)?(?:team|group)\b",
+            re.IGNORECASE,
+        )
+        _existing = {str(h).strip().lower() for h in leadership or []}
+        for _ln in _exp_text.splitlines():
+            _ln = _ln.strip()
+            if _ln and _lead_kw.search(_ln) and _ln.lower() not in _existing:
+                leadership.append(_ln)
+                _existing.add(_ln.lower())
+    except Exception as e:
+        logger.warning(f"Experience-leadership detection failed: {e}")
 
     cv_dict = {
         "cv_id": cv_id,

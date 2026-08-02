@@ -64,7 +64,13 @@ def score_education(cv: dict, config: dict) -> int:
 
     if best_gpa is not None:
         try:
-            if float(best_gpa) >= cfg["gpa_bonus_threshold"]:
+            gpa = float(best_gpa)
+            # Normalize 10.0-scale GPAs (common outside the US) to 4.0-scale
+            # before comparing against the bonus threshold (~ /2.5 keeps 4->~1.6
+            # and 10->4.0, so a perfect 10 still earns the bonus).
+            if 4.0 < gpa <= 10.0:
+                gpa = gpa / 2.5
+            if gpa >= cfg["gpa_bonus_threshold"]:
                 best += cfg["gpa_bonus_points"]
         except (TypeError, ValueError):
             pass

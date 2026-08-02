@@ -195,4 +195,5 @@ class TestExtractLeadershipText:
     def test_line_by_line(self):
         text = "President, Computer Science Club\nVolunteer, Red Cross"
         result = extract_leadership(text)
-        assert len(result) == 2
+        assert len(result) == 1
+        assert "President" in result[0]
