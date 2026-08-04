@@ -148,8 +148,8 @@ class TestExtractAll:
     def test_jd_match_defaults(self):
         sections = self.make_sections()
         result = extract_all("test cv text", sections)
-        assert result["jd_match"]["final_match_score"] == 0.0
-        assert result["jd_match"]["missing_skills"] == []
+        assert result["match"]["final_match_score"] == 0.0
+        assert result["match"]["missing_skills"] == []
 
     def test_languages_fallback_from_skills_section(self):
         sections = self.make_sections({"languages": "", "skills": '{"languages": [{"name": "English"}, {"name": "Spanish"}]}'})

@@ -208,10 +208,11 @@ def extract_all(text: str, sections: dict, file_bytes: bytes = b"") -> dict:
             "experience": 0, "projects": 0, "skills": 0,
             "education": 0, "certifications": 0, "languages": 0, "leadership": 0,
         },
+        "criteria_scores": [],
         "total_score": 0,
         "label": "",
         "suggestions": [],
-        "jd_match": {
+        "match": {
             "semantic_similarity": 0.0,
             "skill_overlap": 0.0,
             "final_match_score": 0.0,

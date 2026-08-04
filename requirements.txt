@@ -18,3 +18,11 @@ pytesseract>=0.3.13
 easyocr>=1.7
 pypdfium2>=5.0
 sentence-transformers>=3.0
+# --- LLM fine-tuning (Qwen3 LoRA) ---
+torch>=2.11.0  # CUDA build (cu128) for RTX 5070 Ti; CPU build works but slower
+torchvision>=0.26.0
+transformers>=5.8
+peft>=0.20
+datasets>=2
+accelerate>=1.0
+json-repair>=0.61

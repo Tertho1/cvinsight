@@ -93,6 +93,9 @@ SECTION_ALIASES: dict[str, str] = {
     "technical expertise": "skills",
     "areas of expertise": "skills",
     "expertise": "skills",
+    "skill highlights": "skills",
+    "technical proficiencies": "skills",
+    "proficiencies": "skills",
 
     # Projects
     "projects": "projects",
@@ -132,6 +135,16 @@ SECTION_ALIASES: dict[str, str] = {
     "academic achievements": "achievements",
     "recognition": "achievements",
     "publications": "achievements",
+    "selected publications": "achievements",
+    "peer-reviewed publications": "achievements",
+    "invited talks": "achievements",
+    "invited presentations": "achievements",
+    "presentations": "achievements",
+    "conferences": "achievements",
+    "conference presentations": "achievements",
+    "workshops": "achievements",
+    "talks": "achievements",
+    "research interests": "achievements",
 
     # Leadership
     "leadership": "leadership",

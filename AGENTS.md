@@ -19,7 +19,13 @@ cvinsight/
 ├── data/
 │   ├── raw/              # Original downloaded datasets (do not edit)
 │   └── processed/        # Cleaned CSVs + extracted_cvs.json (4500 CVs)
-├── demo/                 # Sample CVs for demo (not yet populated)
+├── demo/                 # Sample CVs for demo + demo/benchmark/ (scenario CVs)
+│   └── benchmark/         # 10 controlled scenario CVs + manifest.json + _baseline.json
+├── docs/                 # Documentation (index: docs/README.md)
+│   ├── extraction_audit.md        # Audit findings, fixes, prioritized improvements
+│   ├── extraction_improvements.md # Full improvement list with effort tiers
+│   ├── research_ner_hybrid_extraction.md  # NER research review
+│   └── research_text_reformatting.md      # Text normalization research review
 ├── models/               # Trained .pkl files (not yet built)
 ├── notebooks/            # Jupyter notebooks for EDA & eval
 │   ├── day3_eda.ipynb
@@ -30,12 +36,12 @@ cvinsight/
 ├── scripts/              # Utility scripts (dataset loading, debugging, batch extraction, analysis)
 ├── src/                  # All source code
 │   ├── parser/           # PDF/DOCX/TXT/OCR parsing (✅ done)
-│   ├── extractor/        # NER + rule-based extraction (✅ ~95%, bugs fixed in Phase 1)
+│   ├── extractor/        # NER + rule-based extraction (✅ ~95%, audit fixes in 2026-08-04)
 │   │   └── adapters.py   # Dataset normalization adapters (Phase 2)
 │   ├── scorer/           # Rubric scoring engine (✅ done)
-│   ├── matcher/          # JD similarity & ranking (❌ not started)
+│   ├── matcher/          # JD similarity & ranking (✅ done, Week 6)
 │   └── suggester/        # Suggestion generation (✅ done)
-├── tests/                # 343 unit tests (16 files, all passing)
+├── tests/                # 361 unit tests (16 files, all passing)
 ├── AGENTS.md             # This file
 ├── TODO.md               # Current task tracking
 ├── progress.md           # Weekly progress report
@@ -59,12 +65,12 @@ Structured CSV path:
 ```
 
 ### CVSchema (src/schema.py)
-Pydantic model with nested models (Education, Experience, Project, Certification, Language, SectionScores, JDMatch). All modules read/write this structure. Fields: `cv_id`, `name`, `email`, `phone`, `education`, `experience`, `skills`, `projects`, `certifications`, `languages`, `achievements`, `leadership`, `section_scores`, `total_score`, `label`, `suggestions`, `jd_match`.
+Pydantic model with nested models (Education, Experience, Project, Certification, Language, SectionScores, CriterionScore, JDMatch). All modules read/write this structure. Fields: `cv_id`, `name`, `email`, `phone`, `education`, `experience`, `skills`, `projects`, `certifications`, `languages`, `achievements`, `leadership`, `criteria_scores`, `total_score`, `label`, `suggestions`, `match` (legacy `jd_match` accepted on load).
 
 ### Testing
 - Framework: **pytest** (plain asserts, no unittest.TestCase)
 - Run all: `pytest tests/`
-- 343 tests across 16 files (parser: 133, extractor: 285, scorer+suggester: 51)
+- 387 tests across 18 files (parser: 133, extractor: 285, scorer+suggester+criteria: 61)
 
 ### Python
 - Version: 3.14 (project plan says 3.10 but env is 3.14)
@@ -111,23 +117,61 @@ Pydantic model with nested models (Education, Experience, Project, Certification
    - `scripts/test_finetuned.py` — eval on 9 demo CVs (valid JSON, needs data quality fix)
    - Both ready-made adapters evaluated and found unsuitable
 
-### 🔜 Upcoming
+5. **Extraction Audit & Benchmark** (✅ 2026-08-04)
+   - Root cause fixed: DOCX paragraphs join with single `\n` → multi-job
+     experience collapsed to 1 entry; refactored to whole-section date-anchored
+     parsing (`_parse_experience_text`, `_find_all_dates`, `_looks_like_job_header`)
+   - Comma-first `_parse_title_company` (fixes "University of Texas at Austin")
+   - Rubric degree-key gap fixed (`M.Sc`/`M.Tech`/`M.A`/`M.E`/`B.A`/`B.E`)
+   - `demo/benchmark/` — 10 reproducible scenario CVs + baseline (46.4 → 53.6)
+   - Docs: `docs/extraction_audit.md`, `docs/extraction_improvements.md`
+   - 361 tests passing; demo mean 53.8 unchanged
+   - Follow-on hardenings (ORG-FP span repair, project titles, academic/skill
+     aliases, date-first headers): benchmark mean **56.4**, demo mean **56.2**
 
-5. **Week 5 — ML Text Classifier + Streamlit V1**
-   - TF-IDF vectorization of raw CV text → XGBoost for genuine text classification
-   - Compare with Logistic Regression baseline
-   - `app/app.py` — Streamlit UI: upload → extract → score → classify → suggest
-   - Deploy to Hugging Face Spaces
+6. **Schema v2 — Criteria Scores + Rationales** (✅ 2026-08-04)
+   - `config/default_criteria.json` — configurable criterion list (weight,
+     `method` tag, rationale) instead of the hardcoded 7-section loop
+   - `src/scorer/scorer.py` writes `criteria_scores` (name/score/max_points/
+     weight/method/rationale/overridden_by) + legacy `section_scores` dict;
+     weights derive from rubric cap so the app's custom-weights stay consistent
+   - `src/schema.py`: `CriterionScore` model; `jd_match` → `match`
+     (legacy `jd_match` still accepted on load; `jd_match` property alias kept)
+   - `app/app.py` shows rationale under each section card; DB reads tolerate
+     both `match` and `jd_match`
+   - 387 tests passing; benchmark 56.4 / demo 56.2 unchanged
 
-6. **Week 6 — JD Matching & Ranking (V2)**
-   - `src/matcher/embedder.py`, `semantic_scorer.py`, `skill_overlap.py`, `ranker.py`
-   - Add ranking tab to Streamlit
+### ✅ Completed (2026-08-04) — Week 5/6/7
 
-7. **Week 7 — Fine-Tuning & Final Report**
-   - Custom LoRA fine-tune Qwen3-0.6B on labeled CVs
-   - Bangla CV support (multilingual: Onneshon dataset, B-NER, AI4Bharat Sangraha)
-   - Side-by-side eval: rule-based vs fine-tuned LLM
-   - Full evaluation metrics, final report
+- **Week 5 — ML Text Classifier + Streamlit V1**: TF-IDF → XGBoost (0.8765 acc /
+  0.8754 F1) beats LR baseline (0.8581 / 0.8642); `app/app.py` upload → extract →
+  score → classify → suggest. Classifier deployed (`models/xgb_classifier.pkl`).
+- **Week 6 — JD Matching & Ranking (V2)**: `src/matcher/` (embedder, semantic_scorer,
+  skill_overlap, ranker); ranking tab + JD-match in app. 18 matcher tests.
+- **Week 7 — Fine-Tuning & Final Report**: side-by-side evals (rule vs grounded LLM
+  mean 65.6 vs 53.6, 10/10; classifier LR vs XGBoost), NER `models/ner-v1`
+  (in-domain F1 0.998), full metrics → `models/week7_metrics.json` (NDCG@5 0.98,
+  Spearman ρ 0.314), matcher fixes A/B/C/D, `docs/final_report.md` +
+  `docs/matcher_datasets_latency.md`.
+
+### 🔜 Backlog (research/deploy, not core Week tasks)
+
+- Matcher research backlog — see `TODO.md` "Matcher improvement pipeline":
+  nothing pending there now; remaining backlog is app-side (multi-CV ranking tab).
+  E (hybrid BM25) implemented 2026-08-05 (`src/matcher/bm25_scorer.py`, opt-in, default
+  weight 0.0); quantifying a nonzero hybrid default is pending. ConFit-style contrastive
+  fine-tune done 2026-08-05 (`scripts/train_matcher_confit.py` → `models/matcher-confit`,
+  ATS ρ 0.314→0.436, **adopted as the default embedder** in `embedder.py`); the training
+  script + dataset-eval remain available for future re-runs.
+  App-start eager warm-up done 2026-08-05 (`warm_up()` + app `preload_matcher()`);
+  `resume-job-description-fit` dataset eval done (`scripts/eval_resume_jd_fit.py`,
+  confit binary-fit ρ 0.332 vs base 0.216). NETSOL cross-check done (`scripts/eval_netsol_crosscheck.py`, confit ρ 0.345 vs base 0.329).
+  Multi-CV ranking tab shipped in the app ("🏆 Ranking") 2026-08-05.
+- Bangla CV support (multilingual: Onneshon, B-NER, AI4Bharat Sangraha) — not built.
+- Entity-level NER eval done 2026-08-05 (`scripts/eval_ner_entity_level.py`,
+  in-domain span F1 0.988 vs token 0.998; real-resume spans are in-text by construction).
+- Extract seqeval entity-level accuracy on real resumes (current NER F1 is in-domain).
+- Deployment: Streamlit Cloud OOM → migrate to Render.com/Railway.
 
 ---
 

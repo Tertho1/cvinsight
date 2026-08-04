@@ -1,16 +1,59 @@
 # TODO — CV-Insight
 
-Last updated: 2026-07-24 | App: `streamlit run app/app.py` | Tests: 361 passing
+Last updated: 2026-08-05 | App: `streamlit run app/app.py` | Tests: 387 passing
+---
+
+## Extraction Audit (2026-08-03/04)
+
+- [x] **Research threads** — `docs/research_ner_hybrid_extraction.md` (NER) + `docs/research_text_reformatting.md` (text normalization) saved to root
+- [x] **Demo audit** — per-file per-section scores; mean 53.8; lows are placeholder/sparse content, not bugs
+- [x] **Corpus scan** — `labeled_cvs.csv` p5=53; bottom 12 CVs are genuinely thin synthetic profiles
+- [x] **Fix: company-on-next-line** — `experience_extractor.py` falls back to the line after the date range (table-flattened DOCX), before ORG fallback
+- [x] **Fix: title separator strip** — "Web Developer -" → "Web Developer"
+- [x] **Fix: duplicated-block truncation** — DOCX merged-cell duplicates now truncated at line boundary
+- [x] **`docs/extraction_audit.md`** — findings + prioritized improvements (span repair, project titles, section aliases; parser-level normalization per research thread 2)
+- [x] **Fix: multi-entry experience (root cause)** — DOCX paragraphs join with single `\n` (no blank lines), so old blank-line splitting collapsed 2 jobs → 1 entry. Refactored `_parse_experience_text` to whole-section date-anchored stream; added `_find_all_dates()` with overlap dedup (`_DATE_RANGE_RE`+`_YYYY_RANGE_RE` both match "Jan 2021 - Present") and `_looks_like_job_header()` bullet-line skip
+- [x] **Fix: "at" false split** — `_parse_title_company` tries comma/pipe split before the `at/@|–|—|-` regex → "Teacher's Assistant, University of Texas at Austin" keeps full company
+- [x] **Fix: rubric degree keys** — extractor emits `M.Sc`/`M.Tech`/`M.A`/`M.E` (also `B.A`/`B.E`) but `rubric_config.json` lacked them → master's degrees scored 0. Added keys to `degree_points`
+- [x] **Benchmark CV set** — `scripts/generate_benchmark_cvs.py` → `demo/benchmark/` (10 scenarios, one per failure mode, + `manifest.json` + `_baseline.json`). Baseline mean 46.4 → 53.6 after fixes
+- [x] **Verification** — 361 tests pass; original demo mean unchanged (53.8); benchmark entries/counts now correct (01:2, 03:2, 05:3, 06:3, 08:3)
+- [ ] **Tier 1 next:** span repair for experience title/company (Rebecca "Canvas", srbhr "Front-End" ORG FPs); project title extraction; academic section aliases (invited talks/conferences); fix 04 duplicated-cells skills=7
 
 ---
+
+## LLM Extraction (added 2026-08-03)
+
+- [x] **LLM extraction path** — Qwen3-0.6B LoRA fine-tune done (`scripts/train_llm.py`)
+- [x] **Curated fine-tune data** — `scripts/curate_dataset.py` →
+  `data/processed/curated_{train,val,test}.jsonl` (3,928/345/345), canonical degrees, edge cases, leakage-safe split
+- [x] **`scripts/train_llm.py`** — curated split + **masked JSON-only loss**, rsLoRA, NEFTune, CPU fallback, checkpoint/`--resume`, `--resume-from`
+- [x] **CUDA env** — `torch 2.11.0+cu128` (+torchvision 0.26.0) on RTX 5070 Ti; peft↔transformers 5.8 shim
+- [x] **`scripts/gate_llm_vs_rules.py`** — v2 (1-epoch) beats rules on **10/10 demo CVs** (mean 68 vs 53.6); uses `json-repair`
+- [x] **Full 3-epoch run (v3) overfits** — demo mean drops to 60, 5/10; keep **v2 (1-epoch)** as model
+- [x] **Veracity audit + grounding filter** — `scripts/audit_llm_verity.py` + `src/extractor/grounding.py`;
+  drops invented skills (burg-8, resume_02-8, resume_03-15 dropped); LLM still beats rules 10/10 with grounded
+  skills (mean 65.6 vs 53.6)
+- [x] **seqeval entity-level NER eval** — `scripts/eval_ner_entity_level.py` →
+  `models/ner_entity_level.json`. Hand-rolled span-level (seqeval-equivalent) P/R/F1 on the
+  in-domain test split: **P=0.981 R=0.995 F1=0.988** (token-level 0.998 modestly overstates
+  entity accuracy). Real resumes: 183 spans across 20 demo/benchmark files, all in-text by
+  construction (7 strict-verbatim misses are join/tokenization artifacts, not hallucination).
+- [x] **Span-NER comparison (scan 2026-08-04)** — trained `models/ner-v1` (distilbert, ~13s/37s train),
+  gated vs rules/LLM. NER skills ≈ rules/LLM coverage (10.8 vs 12.9/10.1) but low total (18.6) —
+  no dates/relations. Kept as fast CPU `Rule + NER` app option; **LLM hybrid set aside** (CPU too slow).
+- [x] **Small-model research (2026-08-04)** — encoder NER is the only CPU-real-time family; generative
+  small LLMs (0.5–1.7B) are ~10–60s/CV. Best external candidate: `oksomu/resume-ner` (65M, ~15ms,
+  13 resume labels). Our fine-tunes **`models/ner-v1` already covers this schema**.
+- [x] **Streamlit UI**: rule-based default + `Rule + NER (fast)` option; LLM hybrid unplugged
+- [ ] **Bangla CV support** via fine-tune/multilingual (Week 7 left)
 
 ## Current Priority — Adopted from V2 Proposals
 
 These items were selected from the V2 platform proposals (archived in `project_plan.md` Appendix A) as the highest-ROI improvements for our current codebase:
 
-- [ ] **Dynamic `criteria_scores`** — replace fixed 7-section rubric with a configurable criteria list loaded from `config/default_criteria.json`. Each criterion has independent weight, `method` tag, and `rationale`. Scorer reads from config, not hardcoded keys.
-- [ ] **Score rationales** — every criterion score includes a human-readable rationale string. Objective scores use template strings (e.g. "8 years experience → 10/10"), no LLM needed.
-- [ ] **Schema update** — `section_scores` → `criteria_scores` list; add `method`, `rationale`, `overridden_by` to each entry; rename `jd_match` → `match`
+- [x] **Dynamic `criteria_scores`** — replace fixed 7-section rubric with a configurable criteria list loaded from `config/default_criteria.json`. Each criterion has independent weight, `method` tag, and `rationale`. Scorer reads from config, not hardcoded keys.
+- [x] **Score rationales** — every criterion score includes a human-readable rationale string. Objective scores use template strings (e.g. "1 roles totalling 5.0 years of experience → 18/25"), no LLM needed.
+- [x] **Schema update** — `section_scores` → `criteria_scores` list; add `method`, `rationale`, `overridden_by` to each entry; rename `jd_match` → `match` (legacy `jd_match` still accepted on load for old saved DBs)
 - [x] **Multi-CV comparison view** — simple side-by-side table in Personal Mode when multiple CVs uploaded, same categories as rows
 
 ### Future (Deferred — see project_plan.md Appendix A)
@@ -152,13 +195,47 @@ Hardware: RTX 5070 Ti (local inference & training).
 
 ### Week 7 — Fine-Tuning & Final Report
 
-- [ ] Custom LoRA fine-tune Qwen3-0.6B on improved training data
+- [x] **Side-by-side eval: rule-based vs fine-tuned LLM** — `models/gate_v2_vs_rules.json`: grounded LLM mean 65.6 vs rules 53.6, wins 10/10 demo CVs (~27.6s/CV CPU; kept as batch option, not default)
+- [x] **Side-by-side eval: rubric classifier vs TF-IDF+XGBoost classifier** — `classifier_comparison.csv`: XGBoost 0.8765 acc / 0.8754 F1 vs LR 0.8581 / 0.8642, both above majority baseline (0.7346 / 0.6222)
+- [x] **Full evaluation metrics** — `scripts/week7_eval.py` → `models/week7_metrics.json`: NER token F1 0.998 (in-domain), NDCG@5 0.98 (benchmark)
+- [x] **Matcher measurement fixed (A)** — recompute Spearman live: vs human label ρ=0.288 (embedder-independent) + vs jina ats_score ρ=0.267 (reference only); NDCG@5 stays the headline ranking metric
+- [x] **Matcher bug fixes (B)** — `skill_overlap`: empty JD → 0.0, non-empty JD with no taxonomy skills → neutral 0.5 (was: silent 1.0 full credit); `_cv_to_text`: weighted structured text (experience/education/projects + skills) instead of flat list
+- [x] **`docs/final_report.md`** — consolidated Week 7 report
+- [ ] Custom LoRA fine-tune Qwen3-0.6B on improved training data (v2 kept; v3 overfits — see LLM section)
 - [ ] Bangla CV support evaluation
-- [ ] Side-by-side eval: rule-based vs fine-tuned LLM
-- [ ] Side-by-side eval: rubric classifier vs TF-IDF+XGBoost classifier
-- [ ] Full evaluation metrics (NER F1, classifier F1, Spearman ρ, NDCG@5)
-- [ ] Multi-CV ranking tab in Streamlit
-- [ ] Final report
+- [x] **Multi-CV ranking tab** — `app/app.py` "🏆 Ranking" tab: ranks all stored CVs
+  against the current JD via `rank_cvs()`, showing Match % / semantic / skill overlap /
+  rubric scores, the weight breakdown, and a jump-to-CV picker. Verified end-to-end with
+  rank_cvs on the DB entry format. (TODO.md:203 original item.)
+
+### Matcher improvement pipeline (after A+B)
+
+- [x] **C: Section-level embedding** — added `score_sections()` / `score_sections_cv_dict()` + `match_cv(mode="section")`. **Finding:** ties whole-doc on the benchmark (NDCG@5 0.98) and is unavailable on the ATS dataset (its resumes have no section headings, so it falls back to whole-doc; identical ρ=0.259). On clean demo CVs it can LOWER the score when skills are inline (no detected skills section). Net: not an improvement yet — keep whole-doc default; revisit once a structured-CV ranking gold set exists.
+- [x] **D: Embedder upgrade + learned weights** — default embedder now `BAAI/bge-small-en-v1.5` (env `CV_EMBEDDER` overrides). Measured on ATS human labels: MiniLM ρ=0.259 → **bge-small ρ=0.348** (bge-base 0.260, slower). Full-suite semantic-vs-human ρ now 0.314 (was 0.288). Ranker weights configurable via `weights=` dict / `CV_RANK_WEIGHTS` env; `scripts/learn_ranker_weights.py` fits semantic:skill ratio → **best_w=1.00** (pure semantic ρ=0.338 vs 0.5-blend 0.075 on ATS: skill-overlap hurts on unstructured ATS text; keep as a hint, not a hard default)
+- [x] **E: Hybrid BM25 + semantic** — `src/matcher/bm25_scorer.py` (hand-rolled Okapi, no new dep). Exposed as an **opt-in 4th ranker signal** (default weight 0.0, so 0.5/0.3/0.2 behaviour unchanged); `score_corpus()` does pool-wide pre-filtering. JD as query / CV as doc with stopword-filtered tokens; single-pair score normalized to [0,1]. Enable via `weights={"bm25": ...}` or 4-part `CV_RANK_WEIGHTS="sem;skill;rub;bm25"`. +10 tests (35 matcher / 397 total passing). Next: quantify a bm25+semantic hybrid against pure semantic on ATS/benchmark before adopting a nonzero default.
+- [x] **ConFit-style contrastive fine-tune of bge-small** — `scripts/train_matcher_confit.py`
+  fine-tunes `BAAI/bge-small-en-v1.5` with MultipleNegativesRankingLoss on the 6,241
+  human-labeled `cnamuangtoun/resume-job-description-fit` train pairs (resume anchor /
+  matching-JD positive; in-batch JDs are hard negatives). Saved to `models/matcher-confit`.
+  **Results:** held-out test binary-fit Spearman ρ 0.216 → **0.332** (+54% rel); our ATS
+  human-label ρ **0.314 → 0.436** (+39% rel); NDCG@5 **0.985** (no regression, benchmark
+  ceiling). **Adopted as the default embedder** (`src/matcher/embedder.py`
+  `_DEFAULT_MODEL="models/matcher-confit"`) — same per-pair CPU latency as bge-small
+  (~35 ms/pair), so no speed cost. Roll back anytime with `CV_EMBEDDER=BAAI/bge-small-en-v1.5`.
+- [x] **App-start eager warm-up** of the embedder — `warm_up()` added to `src/matcher/embedder.py`;
+  `app/app.py` `preload_matcher()` (`@st.cache_resource`) loads matcher-confit once at app start
+  so the first JD match skips the ~10s cold start (idempotent; app compiles clean).
+- [x] **NEW dataset eval:** `cnamuangtoun/resume-job-description-fit` (6,241 human-labeled
+  resume–JD pairs, MIT) as a second matching benchmark — `scripts/eval_resume_jd_fit.py` →
+  `models/resume_jd_fit_eval.json`. Held-out test (1,759 pairs): binary-fit Spearman w/ matcher-confit
+  **0.332** (base bge-small 0.216); sampled retrieval NDCG@10 0.309 (base 0.296). Cross-confirms the
+  ConFit gain on a human-labeled set independent of our ATS data.
+- [x] **NETSOL cross-check** of bge-small + learned weights — `scripts/eval_netsol_crosscheck.py` →
+  `models/netsol_crosscheck.json` (849 real candidate-JD pairs, numeric score). Independent
+  validation: matcher-confit pure-semantic ρ **0.345** vs bge-small 0.329; learned
+  semantic-dominant (1.0) beats the hand 0.5 blend (0.345 vs 0.329). The confit/learned-weight
+  advantage is not an ATS-only fluke (smaller absolute gap here, as expected: continuous
+  generated score + structured resumes).
 
 ---
 

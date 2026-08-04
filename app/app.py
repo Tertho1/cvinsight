@@ -56,6 +56,13 @@ LABEL_COLORS = {
 }
 
 
+def get_match(entry: dict) -> dict:
+    """Read the JD-match result from a DB entry, tolerating the legacy
+    'jd_match' key (renamed to 'match' in V2)."""
+    m = entry.get("match") or entry.get("jd_match") or {}
+    return m if isinstance(m, dict) else {}
+
+
 def load_database() -> dict:
     try:
         if os.path.exists(DATABASE_PATH):
@@ -99,7 +106,7 @@ def build_detailed_export_df(db: dict) -> pd.DataFrame:
     rows = []
     for cid, entry in db.items():
         cv = entry.get("cv", {})
-        jd = entry.get("jd_match") or {}
+        jd = get_match(entry)
         rows.append({
             "Name": cv.get("name", ""),
             "Email": cv.get("email", ""),
@@ -203,11 +210,32 @@ def get_parser_extractor_scorer():
 
 
 @st.cache_resource
+def load_ner_tagger():
+    from src.extractor.ner_tag import load_tagger
+    return load_tagger(device_name="cpu")
+
+
+@st.cache_resource
 def load_rubric_config():
     if os.path.exists(DEFAULT_RUBRIC_PATH):
         with open(DEFAULT_RUBRIC_PATH) as f:
             return json.load(f)
     return {}
+
+
+@st.cache_resource
+def preload_matcher():
+    """Warm the JD-matching embedder once at app start.
+
+    Loads models/matcher-confit eagerly so the first JD match doesn't pay the
+    ~10s model-load cold start mid-processing. Cached for the session; a no-op
+    on subsequent runs.
+    """
+    try:
+        from src.matcher.embedder import warm_up
+        return warm_up()
+    except Exception:
+        return False
 
 
 def load_default_weights(config):
@@ -337,7 +365,7 @@ def render_pipeline():
     st.markdown("---")
 
 
-def render_section_cards(section_scores, rubric_config, custom_weights):
+def render_section_cards(section_scores, rubric_config, custom_weights, criteria_scores=None):
     cards_data = []
     for section, score in section_scores.items():
         cfg_entry = rubric_config.get(section, {})
@@ -347,10 +375,16 @@ def render_section_cards(section_scores, rubric_config, custom_weights):
             max_pts = 100
         color = _section_color(score, max_pts)
         label = section.replace("_", " ").title()
-        cards_data.append((label, score, max_pts, color))
+        rationale = ""
+        if criteria_scores:
+            for c in criteria_scores:
+                if c.get("name") == section:
+                    rationale = c.get("rationale", "")
+                    break
+        cards_data.append((label, score, max_pts, color, rationale))
 
     cols = st.columns(len(cards_data))
-    for col, (label, score, max_pts, color) in zip(cols, cards_data):
+    for col, (label, score, max_pts, color, rationale) in zip(cols, cards_data):
         pct = score / max_pts * 100 if max_pts > 0 else 0
         with col:
             st.markdown(
@@ -363,7 +397,10 @@ def render_section_cards(section_scores, rubric_config, custom_weights):
                 f"margin-top:0.5rem;'>"
                 f"<div style='height:4px; width:{pct:.0f}%; background:{color}; "
                 f"border-radius:2px;'></div>"
-                f"</div></div>",
+                f"</div>"
+                + (f"<div style='font-size:0.65rem; color:{MUTED}; margin-top:0.5rem;'>{rationale}</div>"
+                   if rationale else "")
+                + "</div>",
                 unsafe_allow_html=True,
             )
 
@@ -487,6 +524,8 @@ def main():
         st.session_state.cv_cache = None
     if "session_uploads" not in st.session_state:
         st.session_state.session_uploads = []
+    if "_processed_keys" not in st.session_state:
+        st.session_state._processed_keys = set()
 
     # --- Top bar ---
     top_cols = st.columns([6, 1])
@@ -505,6 +544,7 @@ def main():
             st.session_state.cv_database = {}
             st.session_state.cv_cache = None
             st.session_state.active_cv_id = None
+            st.session_state._processed_keys = set()
             save_database({})
             st.rerun()
 
@@ -542,8 +582,22 @@ def main():
                 unsafe_allow_html=True,
             )
 
+        preload_matcher()
+
         st.markdown(f"<div style='font-weight:600; color:{PURPLE}; margin-bottom:0.5rem;'>&#9881;&#65039; Rubric Weights</div>", unsafe_allow_html=True)
-        st.caption("Adjust to match your hiring priorities.")
+        st.caption("Adjust to match your hiring priorities.") 
+        st.divider()
+
+        extractor = st.selectbox(
+            "Extraction engine",
+            ["Rule-based", "Rule + NER (fast)"],
+            key="extractor_mode",
+            help="'Rule + NER' also runs a small fine-tuned distilbert tagger (~10-60ms) "
+                 "to catch extra skills/education the rules miss. Runs on CPU. Fast, "
+                 "no LLM, no GPU.",
+        )
+        if extractor == "Rule + NER (fast)":
+            st.caption("NER tagger adds grounded skills on top of the rules (~fast).")
 
         custom_weights = {}
         total = 0
@@ -566,6 +620,7 @@ def main():
             st.session_state.cv_database = {}
             st.session_state.cv_cache = None
             st.session_state.active_cv_id = None
+            st.session_state._processed_keys = set()
             save_database({})
             st.rerun()
 
@@ -609,23 +664,22 @@ def main():
 
     # --- Processing ---
     if uploaded_files:
-        session_seen = set(st.session_state.session_uploads)
+        processed = st.session_state._processed_keys
         new_files = []
         for f in uploaded_files:
             content = f.read()
             f.seek(0)
             cid = hashlib.md5(content).hexdigest()[:12]
-            if cid not in session_seen:
-                new_files.append(f)
+            if (cid, extractor) not in processed:
+                new_files.append((f, cid))
 
         if new_files:
             parse_cv, split_sections, extract_all, score_cv_fn, generate_suggestions = (
                 get_parser_extractor_scorer()
             )
             progress_bar = st.progress(0, text="Ready")
-            for i, f in enumerate(new_files):
+            for i, (f, cid) in enumerate(new_files):
                 content = f.read()
-                cid = hashlib.md5(content).hexdigest()[:12]
                 msg = f"Processing {f.name} ({i+1}/{len(new_files)})"
                 progress_bar.progress((i) / len(new_files), text=msg)
 
@@ -656,6 +710,20 @@ def main():
                         st.warning(f"Extraction failed for {f.name}.")
                         os.unlink(tmp_path)
                         continue
+
+                    if extractor == "Rule + NER (fast)":
+                        st.write("\U0001F4AC Adding NER spans (rule + NER)...")
+                        try:
+                            ner_model, ner_tok, _ = load_ner_tagger()
+                            from src.extractor.ner_tag import predict_spans, merge_skills, extract_education_gaps
+                            groups = predict_spans(ner_model, ner_tok, raw_text)
+                            cv["skills"] = merge_skills(cv["skills"], groups)
+                            edu_gaps = extract_education_gaps(cv, groups)
+                            if edu_gaps:
+                                cv["education"] = list(cv["education"] or []) + edu_gaps
+                            st.write("\u2705 Rule + NER fused (extra skills + education)")
+                        except Exception as e:
+                            st.warning(f"Rule + NER fusion failed ({e}); rule-based used.")
 
                     st.write("\U0001F3AF Scoring...")
                     if use_custom_weights and total > 0:
@@ -703,14 +771,17 @@ def main():
                 st.session_state.cv_database[cid] = {
                     "filename": f.name,
                     "timestamp": datetime.now().isoformat(),
+                    "extractor": extractor,
                     "raw_text": raw_text,
                     "cv": cv,
                     "suggestions": suggestions,
                     "ml_label": ml_label,
                     "ml_proba": ml_proba.tolist() if hasattr(ml_proba, 'tolist') else ml_proba,
-                    "jd_match": jd_match_result,
+                    "match": jd_match_result,
                 }
-                st.session_state.session_uploads.append(cid)
+                st.session_state._processed_keys.add((cid, extractor))
+                if cid not in st.session_state.session_uploads:
+                    st.session_state.session_uploads.append(cid)
                 st.session_state.cv_cache = st.session_state.cv_database[cid]
                 st.session_state.active_cv_id = cid
 
@@ -731,7 +802,7 @@ def main():
         ml_proba = entry.get("ml_proba")
         if isinstance(ml_proba, str):
             ml_proba = None
-        jd_match = entry.get("jd_match")
+        jd_match = get_match(entry)
 
         current_jd = st.session_state.get("_jd_text", "")
         last_matched = st.session_state.get("_last_matched_jd", "")
@@ -745,10 +816,10 @@ def main():
                     jd_text=current_jd.strip(),
                     rubric_score=cv.get("total_score", 0),
                 )
-                entry["jd_match"] = jd_match
+                entry["match"] = jd_match
                 st.session_state["_last_matched_jd"] = current_jd.strip()
             except Exception as e:
-                jd_match = entry.get("jd_match")
+                jd_match = get_match(entry)
 
         total_score = cv.get("total_score", 0)
         rubric_label = cv.get("label", "Unknown")
@@ -824,7 +895,10 @@ def main():
         st.divider()
         st.subheader("\U0001F4C8 Section Breakdown")
         section_scores = cv.get("section_scores", {})
-        render_section_cards(section_scores, rubric_config, custom_weights)
+        render_section_cards(
+            section_scores, rubric_config, custom_weights,
+            criteria_scores=cv.get("criteria_scores", []),
+        )
 
         # --- Tabs ---
         st.divider()
@@ -834,6 +908,7 @@ def main():
             "\U0001F4DD Raw Text",
             "\U0001F4C2 History",
             "\U0001F91D JD Match",
+            "\U0001F3C6 Ranking",
             "\U0001F50D Skill Search",
         ])
 
@@ -848,7 +923,12 @@ def main():
                 st.markdown(f"**Skills ({len(skills)}):**")
                 st.text_area("skills", skills_str, height=100, label_visibility="collapsed", key="skills_area")
                 if cv.get("languages"):
-                    st.markdown(f"**Languages:** {', '.join(cv['languages'])}")
+                    langs = ", ".join(
+                        (l.get("language", "") if isinstance(l, dict) else str(l))
+                        for l in cv["languages"] if l
+                    )
+                    if langs:
+                        st.markdown(f"**Languages:** {langs}")
 
             with col_b:
                 render_table(
@@ -888,7 +968,7 @@ def main():
                 cv_items = list(db.items())
                 for _cid, e in cv_items:
                     if sort_by == "JD Match":
-                        jd = e.get("jd_match") or {}
+                        jd = get_match(e)
                         e["_sort_score"] = jd.get("final_match_score", 0) * 100
                     else:
                         e["_sort_score"] = e["cv"]["total_score"]
@@ -985,7 +1065,61 @@ def main():
             else:
                 st.info("Paste a job description in the JD field above and re-upload the CV to see match results.")
 
-        with tabs[5]:  # Skill Search
+        with tabs[5]:  # Candidate Ranking (multi-CV vs JD)
+            current_jd = st.session_state.get("_jd_text", "").strip()
+            if not current_jd:
+                st.info("Paste a job description in the JD field above, then open this tab to rank all stored CVs against it.")
+            elif not db:
+                st.info("No CVs in database to rank.")
+            else:
+                try:
+                    from src.matcher.ranker import rank_cvs
+                    cvs = []
+                    for cid, entry in db.items():
+                        cv_d = entry.get("cv", {}) or {}
+                        cvs.append({
+                            "cv_id": cid,
+                            "name": cv_d.get("name") or cv_d.get("filename") or "Unknown",
+                            "raw_text": entry.get("raw_text", ""),
+                            "skills": cv_d.get("skills", []),
+                            "total_score": cv_d.get("total_score", 0),
+                        })
+                    ranked = rank_cvs(cvs, current_jd)
+                    st.markdown(f"### \U0001F3C6 Ranked candidates — {len(ranked)} CV(s)")
+                    rows = []
+                    for idx, r in enumerate(ranked, start=1):
+                        rows.append({
+                            "Rank": idx,
+                            "Name": r.get("name", "Unknown"),
+                            "Match %": round(r["final_match_score"] * 100, 1),
+                            "Semantic": round(r["semantic_similarity"], 3),
+                            "Skill Overlap": round(r["skill_overlap"] * 100, 1),
+                            "Rubric Score": r.get("total_score", 0),
+                        })
+                    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True, use_container_width=True)
+
+                    with st.expander("Why this ranking? (weights)"):
+                        w = ranked[0]["weights"] if ranked else {}
+                        st.caption(
+                            f"Final = {w.get('semantic', 0.5)*100:.0f}% semantic + "
+                            f"{w.get('skill', 0.3)*100:.0f}% skill overlap + "
+                            f"{w.get('rubric', 0.2)*100:.0f}% rubric (+ "
+                            f"{w.get('bm25', 0.0)*100:.0f}% BM25 lexical, if enabled)."
+                        )
+
+                    st.divider()
+                    pick = st.selectbox("View ranked CV:", [""] + [r["name"] for r in ranked],
+                                        key="ranking_pick")
+                    if pick:
+                        target = next((c for c in cvs if c["name"] == pick), None)
+                        if target and target["cv_id"] in db:
+                            st.session_state.cv_cache = db[target["cv_id"]]
+                            st.session_state.active_cv_id = target["cv_id"]
+                            st.rerun()
+                except Exception as e:
+                    st.warning(f"Ranking failed: {e}")
+
+        with tabs[6]:  # Skill Search
             if db:
                 query = st.text_input(
                     "Search by skill(s):",

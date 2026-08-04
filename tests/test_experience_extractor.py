@@ -147,3 +147,39 @@ class TestExperienceTextPath:
         result, years = extract_experience(raw)
         assert len(result) == 1
         assert result[0]["title"] == "Engineer"
+
+
+class TestExperienceFalsePositiveFixes:
+
+    def test_at_not_split_from_institution(self):
+        text = "Teacher's Assistant, University of Texas at Austin\nAug 2022 - Present"
+        result, years = extract_experience(text)
+        assert len(result) >= 1
+        assert result[0]["company"] == "University of Texas at Austin"
+        assert result[0]["title"] == "Teacher's Assistant"
+
+    def test_date_first_header(self):
+        text = ("June 2022 - Software Engineer, Google, Mountain View, CA, USA\n"
+                "Present Developing intuitive UIs using React.")
+        result, years = extract_experience(text)
+        assert len(result) >= 1
+        assert result[0]["title"] == "Software Engineer"
+        assert result[0]["company"] == "Google"
+        assert result[0]["start"].strip() != ""
+
+    def test_org_false_positive_rejected(self):
+        # spacy tags "Front-End" as ORG; date-first parser should recover the
+        # real title/company instead of falling back to the ORG span.
+        text = ("June 2022 - Software Engineer (Front-End), Google, "
+                "Mountain View, CA, USA\nPresent - developing React UIs.")
+        result, years = extract_experience(text)
+        assert len(result) >= 1
+        assert result[0]["title"] != ""
+        assert "Front-End" not in result[0]["company"]
+
+    def test_section_heading_org_not_reused_for_company(self):
+        text = ("Web Developer, Acme\nJan 2020 - Present\nBuilt features\n"
+                "PROJECT HIGHLIGHTS\nPortfolio App, 2021")
+        result, years = extract_experience(text)
+        assert len(result) >= 1
+        assert result[0]["company"] == "Acme"

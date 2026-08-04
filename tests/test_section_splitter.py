@@ -292,3 +292,20 @@ class TestSplitSections:
     def test_get_section_missing_returns_empty(self):
         result = split_sections(CV_STANDARD)
         assert get_section(result, "nonexistent_section") == ""
+
+    def test_academic_headings_map_to_achievements(self):
+        result = split_sections(
+            "John Doe\n\nPublications\nPaper A\n\nInvited Talks\nTalk B\n\n"
+            "Conferences\nTalk C"
+        )
+        assert "achievements" in result
+        assert "Paper A" in result["achievements"]
+        assert "Talk B" in result["achievements"]
+        assert "Talk C" in result["achievements"]
+        assert "experience" not in result
+
+    def test_skill_highlights_maps_to_skills(self):
+        result = split_sections("John Doe\n\nSkill Highlights\nJavaScript\nReact\n")
+        assert "skills" in result
+        assert "JavaScript" in result["skills"]
+        assert "React" in result["skills"]

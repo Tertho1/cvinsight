@@ -18,14 +18,20 @@ def score(
     return score_with_taxonomy(cv_skills, jd_text)
 
 
+NEUTRAL_RATIO = 0.5
+
+
 def score_with_taxonomy(
     cv_skills: list[str],
     jd_text: str,
     taxonomy_path: str = "config/skill_taxonomy.json",
 ) -> tuple[float, list[str]]:
     jd_skills = _extract_jd_skills(jd_text, taxonomy_path=taxonomy_path)
+
+    if jd_text and jd_text.strip() and not jd_skills:
+        return NEUTRAL_RATIO, []
     if not jd_skills:
-        return 1.0, []
+        return 0.0, []
 
     cv_skills_lower = {s.lower().strip() for s in cv_skills}
     matched = jd_skills & cv_skills_lower

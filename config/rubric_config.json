@@ -32,10 +32,11 @@
     "description": "Degree level score",
     "degree_points": {
       "phd": 15, "PhD": 15, "PHD": 15, "Ph.D.": 15, "ph.d.": 15,
-      "masters": 13, "Master": 13, "Masters": 13, "MS": 13, "MSc": 13, "M.Eng.": 13, "MBA": 13,
+      "masters": 13, "Master": 13, "Masters": 13, "MS": 13, "MSc": 13, "M.Sc": 13,
+      "M.Eng.": 13, "M.Tech": 13, "M.A": 13, "M.E": 13, "MBA": 13,
       "master of science": 13, "master of arts": 13, "master of engineering": 13,
       "bachelors": 10, "Bachelor": 10, "Bachelors": 10, "BS": 10, "BSc": 10, "B.Sc": 10,
-      "B.Tech": 10, "BE": 10, "B.E.": 10, "B.A.": 10, "BA": 10, "bachelor of science": 10,
+      "B.Tech": 10, "BE": 10, "B.E.": 10, "B.A.": 10, "B.A": 10, "B.E": 10, "BA": 10, "bachelor of science": 10,
       "bachelor of arts": 10, "bachelor of engineering": 10, "bachelor of technology": 10,
       "diploma": 6, "Diploma": 6, "Associate": 6, "HND": 6, "associate degree": 6,
       "none": 0, "": 0

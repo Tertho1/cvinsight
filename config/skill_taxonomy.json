@@ -10,6 +10,7 @@
       "YAML", "TOML", "GraphQL", "REST", "gRPC", "WebAssembly"
     ],
     "web_frameworks": [
+      "HTML", "CSS", "Sass", "SCSS", "LESS", "Vanilla JS",
       "React", "Angular", "Vue", "Next.js", "Nuxt.js", "Django", "Flask", "FastAPI",
       "Spring Boot", "Spring", "Node.js", "Express", "Laravel", "Ruby on Rails",
       "ASP.NET", "ASP.NET Core", "Blazor", "Svelte", "SvelteKit", "jQuery",

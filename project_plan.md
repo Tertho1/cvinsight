@@ -202,6 +202,8 @@ Table of Contents
     NER / Extraction spaCy (en_core_web_sm) Named entity recognition, EntityRuler,
     PhraseMatcher
     NER / Extraction Hugging Face transformers Fine-tuned BERT on NER resume dataset
+    NER / Extraction Qwen/Qwen3-0.6B + PEFT LoRA LLM extraction path (Week 7 stretch); masked
+        JSON-only loss; rsLoRA + NEFTune; json-repair to de-tangle malformed JSON output
     Scoring scikit-learn Logistic Regression, Random Forest baseline
     Scoring XGBoost Improved classifier for Strong/Average/Weak
     Matching sentence-transformers all-MiniLM-L6-v2 for CV-JD semantic similarity
@@ -909,3 +911,17 @@ Personal Mode: multiple CVs uploaded → simple side-by-side comparison view, sa
 ---
 
 *Appendix appended 2026-07-18. These proposals are not active requirements — they are archived here for reference when project scope expands.*
+
+---
+
+## Note — Extraction Backend Decision (2026-08-04)
+
+The fine-tuned Qwen3-0.6B LoRA extractor (LLM) is accurate (mean 65.6, beats rules on 10/10 demo
+CVs) but its inference is ~1min/CV on CPU and unfeasible on the free 1GB-RAM Cloud, so it is kept
+offline only (`src/extractor/hybrid.py`) and NOT the production extraction path.
+
+Production path remains **rule-based `extract_all()`** (fast, deterministic, 285 tests). A fast
+CPU additive: **`src/extractor/ner_tag.py`** (`Rule + NER` app option, distilbert + `models/ner-v1`,
+~0.07s/CV) — safe + grounded, small score bump. Research confirms encoder NER is the only
+CPU-real-time extraction family; generative small LLMs stay too slow on CPU. See `progress.md`,
+`docs/research_ner_hybrid_extraction.md`, and `docs/extraction_audit.md`.

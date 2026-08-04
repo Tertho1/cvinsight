@@ -102,6 +102,67 @@ def score_leadership(cv: dict, config: dict) -> int:
     return int(min(count * cfg["points_per_role"], cfg["max_points"]))
 
 
+# ──────────────────────────────────────────────
+# Rationale builders
+# Each returns a short human-readable string that explains how a criterion
+# score was derived. Kept here so the numeric scorer stays the single source
+# of truth — the rationale simply re-states the inputs used by its scorer.
+# ──────────────────────────────────────────────
+
+def rationale_experience(cv: dict, config: dict) -> str:
+    total_months = sum(e.get("duration_months", 0) or 0 for e in cv.get("experience", []))
+    years = total_months / 12
+    return f"{len(cv.get('experience', []))} roles totalling {years:.1f} years of experience"
+
+
+def rationale_projects(cv: dict, config: dict) -> str:
+    projects = cv.get("projects", [])
+    linked = sum(1 for p in projects if p.get("link"))
+    return f"{len(projects)} projects ({linked} with a live/GitHub link)"
+
+
+def rationale_skills(cv: dict, config: dict) -> str:
+    cfg = config["skills"]
+    return f"{len(cv.get('skills', []))} matched skills (target {cfg.get('target_skill_count')})"
+
+
+def rationale_education(cv: dict, config: dict) -> str:
+    degree_points = config["education"]["degree_points"]
+    best = 0
+    degree = "none"
+    for entry in cv.get("education", []):
+        d = (entry.get("degree") or "").strip()
+        pts = degree_points.get(d, 0)
+        if pts > best:
+            best = pts
+            degree = d or "none"
+    return f"Highest credential is '{degree}' which awards {best} base points"
+
+
+def rationale_certifications(cv: dict, config: dict) -> str:
+    cfg = config["certifications"]
+    return f"{len(cv.get('certifications', []))} certifications at {cfg.get('points_per_cert')}/cert"
+
+
+def rationale_languages(cv: dict, config: dict) -> str:
+    return f"{len(cv.get('languages', []))} languages spoken"
+
+
+def rationale_leadership(cv: dict, config: dict) -> str:
+    return f"{len(cv.get('leadership', []))} leadership/volunteer roles"
+
+
+RATIONALE_BUILDERS = {
+    "experience": rationale_experience,
+    "projects": rationale_projects,
+    "skills": rationale_skills,
+    "education": rationale_education,
+    "certifications": rationale_certifications,
+    "languages": rationale_languages,
+    "leadership": rationale_leadership,
+}
+
+
 # Registry used by scorer.py to iterate all sections generically
 SECTION_SCORERS = {
     "experience": score_experience,

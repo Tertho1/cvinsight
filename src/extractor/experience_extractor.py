@@ -53,7 +53,33 @@ _LOCATION_WORDS = {
     "bangalore", "bengaluru", "mumbai", "delhi", "pune", "kolkata",
     "chennai", "hyderabad", "ahmedabad", "india", "nagpur",
     "new york", "san francisco", "oakland", "remote",
+    "mountain view", "chicago", "usa", "portland", "seattle",
 }
+
+# Section-heading / non-company words that must never be accepted as an ORG
+# company via the spacy fallback (e.g. "PROJECT HIGHLIGHTS", "SKILLS").
+_ORG_BLOCKLIST = {
+    "project highlights", "highlights", "projects", "skills", "education",
+    "experience", "summary", "professional summary", "objective",
+    "certifications", "languages", "leadership", "achievements",
+    "references", "contact", "profile", "work experience", "projects",
+}
+
+
+def _is_plausible_company_org(text: str) -> bool:
+    """An ORG span from spacy is a plausible company only if it is not
+    multi-line, oversized, a section heading, or a pure job title."""
+    o = text.strip()
+    if not o or "\n" in o:
+        return False
+    if len(o) > 60:
+        return False
+    low = o.lower()
+    if any(w in low for w in _ORG_BLOCKLIST):
+        return False
+    if _looks_like_job_title(o):
+        return False
+    return True
 
 
 def _looks_like_company(text: str, org_entities: set = None) -> bool:
@@ -217,6 +243,26 @@ _DATE_START_RE = re.compile(
 
 _PRESENT_ONLY_RE = re.compile(r"(?:\bPresent\b|\bCurrent\b|\bTill\s+Date\b)", re.IGNORECASE)
 
+_SEASON_RE = re.compile(r"\b(Spring|Summer|Fall|Autumn|Winter)\s+(\d{4})\b", re.IGNORECASE)
+_SEASON_START_MONTH = {"spring": "Mar", "summer": "Jun", "fall": "Sep",
+                       "autumn": "Sep", "winter": "Dec"}
+_SEASON_END_MONTH = {"spring": "Jun", "summer": "Sep", "fall": "Dec",
+                     "autumn": "Dec", "winter": "Mar"}
+
+
+def _find_season_date(para: str):
+    """Return (start_str, end_str, end_pos, start_pos) for a 'Summer 2023' style
+    date (treated as ~3 months), else None."""
+    m = _SEASON_RE.search(para)
+    if not m:
+        return None
+    season = m.group(1).lower()
+    year = m.group(2)
+    start_str = f"{_SEASON_START_MONTH[season]} {year}"
+    end_year = str(int(year) + 1) if season == "winter" else year
+    end_str = f"{_SEASON_END_MONTH[season]} {end_year}"
+    return start_str, end_str, m.end(), m.start()
+
 
 def _clean_company(company: str) -> str:
     """Strip location/pipe fragments that get glued onto the company name
@@ -228,6 +274,17 @@ def _clean_company(company: str) -> str:
     # location/dates we don't want in the company field).
     cleaned = re.split(r"\s*\|\s*", cleaned)[0]
     cleaned = cleaned.strip(" .,;/-|")
+    # Cut at a known location word ("Google, Mountain View, CA, USA" ->
+    # "Google"). Match location words as substrings so city+state phrases like
+    # "Mountain View" are found even when glued to more location text.
+    low = cleaned.lower()
+    for loc in sorted(_LOCATION_WORDS, key=len, reverse=True):
+        if not loc:
+            continue
+        idx = low.find(loc)
+        if idx > 0:
+            cleaned = cleaned[:idx].strip(" .,;/-|")
+            break
     return cleaned
 
 
@@ -258,10 +315,9 @@ def _parse_title_company(leading_text: str) -> tuple[str, str]:
     leading = leading_text.strip().strip(".,:;")
     if not leading:
         return "", ""
-    m = _TITLE_COMPANY_RE.match(leading)
-    if m:
-        return m.group(1).strip(), m.group(2).strip()
-    # Split on comma or pipe, but only the first separator
+
+    # Prefer comma/pipe split first: the "at" pattern false-matches inside
+    # institution names ("University of Texas at Austin" -> company "Austin").
     sep_match = re.search(r"\s*[,|]\s*", leading)
     if sep_match:
         title = leading[:sep_match.start()].strip()
@@ -270,7 +326,73 @@ def _parse_title_company(leading_text: str) -> tuple[str, str]:
         company = company.split("\n")[0].strip()
         if title and company:
             return title, company
+
+    m = _TITLE_COMPANY_RE.match(leading)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
     return leading, ""
+
+
+def _looks_like_job_header(line: str) -> bool:
+    """A line is a plausible job header if it carries a title word, a company
+    suffix, or a location hint -- i.e. NOT a bullet/description line."""
+    stripped = line.strip().strip(",\n\t ")
+    if not stripped:
+        return False
+    if stripped.startswith(("-", "*", "•", "\u2022", "o")):
+        return False
+    return _looks_like_job_title(stripped) or _looks_like_company(stripped)
+
+
+def _find_all_dates(para: str) -> list[tuple]:
+    dates = _find_date_range(para)
+    if not dates:
+        dates = _find_date_range_permissive(para)
+    if not dates:
+        season_date = _find_season_date(para)
+        if season_date:
+            dates = [season_date]
+    if not dates:
+        return []
+
+    # Several regexes can match the same span (e.g. "Jan 2021 - Present"
+    # also matches _YYYY_RANGE_RE as "2021 - Present"). Keep only the widest,
+    # earliest match for each overlapping cluster so one date range -> one entry.
+    dates.sort(key=lambda x: (x[3], x[2]))
+    merged = []
+    for d in dates:
+        if not merged:
+            merged.append(d)
+            continue
+        last = merged[-1]
+        if d[3] < last[2]:
+            # Overlap: keep the wider match (greater match_end).
+            if d[2] > last[2]:
+                merged[-1] = d
+        else:
+            merged.append(d)
+    return merged
+
+
+def _extract_date_first_header(section_text: str, match_start: int,
+                               match_end: int) -> tuple[str, str]:
+    """For a date-first format the title/company sit BETWEEN the start-date
+    token and the end-date token ("June 2022 - Software Engineer, Google,
+    Mountain View, CA, USA Present"). Strip the date tokens and parse the
+    middle as title/company."""
+    seg = section_text[match_start:match_end]
+    # Remove the leading date token ("June 2022 -" / "2021-2022" / "06/2020").
+    seg = re.sub(r"^\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+                 r"[a-z]*[.,]?\s+\d{4}\s*[-–to]+\s*", "", seg, flags=re.I)
+    seg = re.sub(r"^\s*\d{4}\s*[-–to]+\s*", "", seg, flags=re.I)
+    seg = re.sub(r"^\s*\d{1,2}/\d{4}\s*[-–to]+\s*", "", seg, flags=re.I)
+    # Remove trailing end-date token ("Present", "Current", "2022", "12/2022").
+    seg = re.sub(r"\s+(?:Present|Current|Till\s+Date)\s*$", "", seg, flags=re.I)
+    seg = re.sub(r"\s+(?:19|20)\d{2}\s*$", "", seg, flags=re.I)
+    seg = seg.strip().strip("-–—|,;:. ")
+    if not seg:
+        return "", ""
+    return _parse_title_company(seg)
 
 
 def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
@@ -280,28 +402,22 @@ def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
 
     experiences = []
     seen_starts = set()
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", section_text) if p.strip()]
 
-    for para in paragraphs:
-        dates = _find_date_range(para)
-        if not dates:
-            dates = _find_date_range_permissive(para)
-        if not dates:
-            continue
+    # Process the whole section as one stream of date ranges. Date ranges are
+    # the anchors; the text between two consecutive ranges is one entry's
+    # title/company/description. This handles DOCX paragraphs joined by a
+    # single \n AND PDFs that split a job title from its dates by a blank line.
+    dates = _find_all_dates(section_text)
+    if not dates:
+        return [], 0.0
+    dates.sort(key=lambda x: x[3])
 
-        # Find the earliest date match position (use match_start_pos for accuracy)
-        dates.sort(key=lambda x: x[3])
-        start_str, end_val, match_end, match_start = dates[0]
-
-        start_key = start_str
-        if start_key in seen_starts:
-            continue
-        seen_starts.add(start_key)
-
-        months = compute_months(start_str, end_val)
+    prev_end = 0
+    for i, (start_str, end_val, match_end, match_start) in enumerate(dates):
+        next_start = dates[i + 1][3] if i + 1 < len(dates) else len(section_text)
 
         # Text before the date match is candidate for title/company
-        leading = para[:match_start].strip().strip(",\n\t ")
+        leading = section_text[prev_end:match_start].strip().strip(",\n\t ")
         leading_lines = [l.strip() for l in leading.split("\n") if l.strip()]
         title, company = "", ""
         if leading_lines:
@@ -323,30 +439,88 @@ def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
                         title = pt
                         company = leading_lines[-1].rstrip(" ,;/-")
                         break
+        else:
+            # Date-first format: "June 2022 - Software Engineer, Google, ...
+            # Present". The header sits inside the date-range match itself.
+            title, company = _extract_date_first_header(
+                section_text, match_start, match_end)
+
+        # Skip segments whose leading line is a bullet/description, not a
+        # job header (e.g. a date range mentioned inside a bullet). A
+        # date-first format (date before the title) has empty leading and
+        # must still be processed.
+        last_leading = leading_lines[-1] if leading_lines else ""
+        if last_leading.startswith(("-", "*", "•", "\u2022", "o ")) \
+           and not _looks_like_job_header(last_leading):
+            prev_end = match_end
+            continue
+
         # Clean company name: strip trailing non-alpha chars, newlines, date fragments
         company = _clean_company(company)
 
-        # Fallback: use ORG entities from paragraph
-        if not company:
-            para_doc = nlp(para)
-            para_orgs = {ent.text.strip() for ent in para_doc.ents
-                         if ent.label_ == "ORG" and len(ent.text.strip()) >= 2}
-            for org in sorted(para_orgs, key=len, reverse=True):
-                if org in para:
-                    company = _clean_company(org)
-                    break
+        # Strip trailing separator junk from the title ("Web Developer -" -> "Web Developer")
+        title = title.strip().strip("-–—|,;:. ")
 
-        # Description: text after the date range
-        description = para[match_end:].strip().strip(",\n\t ")
+        # Description: text between this date range and the next one
+        raw_after = section_text[match_end:next_start].strip().strip(",\n\t ")
+        after_date = raw_after
+
+        # Fallback: when the leading text only yielded a title (no company),
+        # the company often sits on the line right after the date range, e.g.
+        #   "Web Developer - 09/2015 to 05/2019"      (title + dates)
+        #   "Luna Web Design, New York"                (company)
+        if not company:
+            next_lines = [l.strip() for l in after_date.split("\n") if l.strip()]
+            if next_lines and _looks_like_company(next_lines[0], org_entities):
+                company = _clean_company(next_lines[0])
+                after_date = "\n".join(next_lines[1:]).strip().strip(",\n\t ")
+
+        # Fallback: use ORG entities found inside THIS entry's header lines
+        # (the title line + the line above it), never description bullets or a
+        # section-wide span reused for every entry -- that produced companies
+        # like "PROJECT HIGHLIGHTS\nSnake Game" on Rebecca.
+        if not company:
+            header_block = "\n".join(leading_lines[-2:])
+            near_orgs = [o for o in org_entities
+                         if _is_plausible_company_org(o) and o in header_block]
+            if near_orgs:
+                company = _clean_company(sorted(near_orgs, key=len, reverse=True)[0])
+
+        description = after_date
+
+        # Truncate duplicated blocks: some DOCX templates emit each table
+        # cell's content twice (once per merged cell). If the same date range
+        # reappears in the description, the section was duplicated -- keep
+        # only the first occurrence.
+        repeat_dates = _find_date_range(after_date)
+        if repeat_dates:
+            repeat_dates.sort(key=lambda x: x[3])
+            repeat_start = repeat_dates[0][3]
+            if repeat_start > 0:
+                # Step back to the start of the line that begins the
+                # duplicated block (its title/heading line).
+                line_start = after_date.rfind("\n", 0, repeat_start)
+                if line_start != -1:
+                    description = after_date[:line_start].strip().strip(",\n\t ")
+                else:
+                    description = after_date[:repeat_start].strip().strip(",\n\t ")
         # Also capture text between date components if any
         if not description:
-            lines = [l.strip() for l in para.split("\n") if l.strip()]
+            lines = [l.strip() for l in section_text.split("\n") if l.strip()]
             desc_lines = [l for l in lines if l.lower() not in ("", "nan") and l != leading.strip()]
             description = " ".join(desc_lines)
 
         experience_end = end_val
         if end_val.lower() in _PRESENT:
             experience_end = "Present"
+
+        start_key = start_str
+        if start_key in seen_starts:
+            prev_end = match_end
+            continue
+        seen_starts.add(start_key)
+
+        months = compute_months(start_str, end_val)
 
         experiences.append({
             "title": title,
@@ -356,6 +530,7 @@ def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
             "duration_months": months,
             "description": description,
         })
+        prev_end = match_end
 
     total_years = sum(e["duration_months"] for e in experiences) / 12 if experiences else 0
     return experiences, round(total_years, 1)

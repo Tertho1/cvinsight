@@ -73,6 +73,34 @@ class TestExtractProjectsText:
         link = result[0].get("link") or ""
         assert "github" in link
 
+    def test_flattened_multiple_projects_split(self):
+        text = ("E-commerce Dashboard - React + Redux + Chart.js\n"
+                "Personal Blog - Next.js + Tailwind + MDX\n"
+                "Weather App - React + OpenWeather API integration")
+        result = extract_projects(text)
+        assert len(result) == 3
+        assert result[0]["name"] == "E-commerce Dashboard"
+        assert result[1]["name"] == "Personal Blog"
+        assert result[2]["name"] == "Weather App"
+        assert "react" in result[0]["tools"]
+
+    def test_bullet_projects_split(self):
+        text = ("- Open-source contribution to Django REST Framework (500+ stars)\n"
+                "- Personal finance tracker app (Python/FastAPI backend)")
+        result = extract_projects(text)
+        assert len(result) == 2
+        assert "Open-source" in result[0]["name"]
+        assert "Personal finance" in result[1]["name"]
+
+    def test_bullet_descriptions_not_split(self):
+        text = ("Library Management System (Capstone)\n"
+                "- Built a web app with React and Node.js\n"
+                "- Used MongoDB for data storage")
+        result = extract_projects(text)
+        assert len(result) == 1
+        assert result[0]["name"] == "Library Management System (Capstone)"
+        assert "MongoDB" in result[0]["description"]
+
 
 class TestExtractCertificationsStructured:
 

@@ -42,6 +42,65 @@ _TECH_CATEGORY_HEADERS = [
 GITHUB_PATTERN = re.compile(r"github\.com/[\w-]+/[\w-]+", re.IGNORECASE)
 _YEAR_RE = re.compile(r"\b(20\d{2})\b")
 
+_BULLET_PREFIX_RE = re.compile(r"^\s*(?:[-•*\u2022o])\s+")
+
+# A line that looks like a project title inside a blank-line-free block:
+# short, and carrying a tech-stack separator (" - React", "(Python)",
+# " + Tailwind") or a GitHub link. Used to split flattened PDF projects.
+_TITLE_SEP_RE = re.compile(
+    r"\s[-–]\s+[A-Za-z0-9+#]|\s\([A-Za-z0-9#]|\s\+\s|github\.com"
+)
+
+
+def _is_project_title_line(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if len(stripped) > 90:
+        return False
+    if stripped.endswith("."):
+        return False
+    # A bare github URL (the whole line is just the link) belongs to the
+    # current project -- do not treat it as a new title.
+    if GITHUB_PATTERN.search(stripped) and not re.sub(
+            r"\s*github\.com/[\w-]+/[\w-]+\s*", "", stripped):
+        return False
+    return bool(_TITLE_SEP_RE.search(stripped))
+
+
+def _split_project_text(section_text: str) -> list[list[str]]:
+    """Split a projects section into per-project line groups.
+
+    Handles blank-line-separated blocks AND flattened (PDF) sections where
+    multiple projects share one block: bullets each start a project, and a
+    short title line carrying a tech-stack separator starts a new project."""
+    blocks = re.split(r"\n{2,}", section_text.strip())
+    groups: list[list[str]] = []
+    for block in blocks:
+        block = block.strip()
+        if not block:
+            continue
+        lines = [l for l in block.split("\n") if l.strip()]
+        if not lines:
+            continue
+        has_multi = any(_is_project_title_line(l) for l in lines[1:])
+        if not has_multi:
+            # Single-project block (or first line is the only title).
+            groups.append(lines)
+            continue
+        # Multi-title block: A new project starts on a title-looking line
+        # (bare bullets that merely describe the current project, e.g.
+        # " - Built a web app with React", do NOT start a new project).
+        cur = [lines[0]]
+        for line in lines[1:]:
+            if _is_project_title_line(line):
+                groups.append(cur)
+                cur = [line]
+            else:
+                cur.append(line)
+        groups.append(cur)
+    return [g for g in groups if g]
+
 
 def extract_projects(section_text: str) -> list[dict]:
     parsed = try_parse_structured(section_text)
@@ -90,18 +149,29 @@ def extract_projects(section_text: str) -> list[dict]:
             })
         return projects
 
-    blocks = re.split(r"\n{2,}", section_text.strip())
+    groups = _split_project_text(section_text)
     projects = []
-    for block in blocks:
-        block = block.strip()
+    for lines in groups:
+        block = "\n".join(lines).strip()
         if not block:
             continue
-        lines = block.split("\n")
         github_links = GITHUB_PATTERN.findall(block)
         name = lines[0].strip()
+        # Strip leading bullets from the title line.
+        name = _BULLET_PREFIX_RE.sub("", name).strip()
+        title_tail = ""
+        # Trim a trailing tech-stack list off the title
+        # ("E-commerce Dashboard - React + Redux" -> "E-commerce Dashboard"),
+        # keeping the removed tail as extra tool signal.
+        sep = re.search(r"\s[-–]\s+", name)
+        if sep:
+            title_tail = name[sep.start():]
+            name = name[:sep.start()].strip()
         desc = " ".join(lines[1:]).strip()
-        # Extract tools from description using the skill extractor
-        tools = extract_skills(desc) if desc else []
+        # Extract tools from description (and the trimmed title tail) using
+        # the skill extractor.
+        tool_src = " ".join(x for x in (title_tail, name, desc) if x)
+        tools = extract_skills(tool_src) if tool_src else []
         projects.append({
             "name": name,
             "tools": tools,

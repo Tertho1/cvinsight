@@ -6,9 +6,9 @@
 # Every module in this project reads from or writes to this schema:
 #   - parser      → produces raw text
 #   - extractor   → fills in the fields below
-#   - scorer      → fills in section_scores, total_score, label
+#   - scorer      → fills in criteria_scores, total_score, label
 #   - suggester   → fills in suggestions
-#   - matcher     → fills in jd_match
+#   - matcher     → fills in match
 #   - app         → reads and displays the final object
 #
 # RULE: If you need to add a new field to the CV output,
@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AliasChoices
 import hashlib
 import json
 
@@ -96,6 +96,25 @@ class JDMatch(BaseModel):
     missing_skills: List[str] = []     # skills in JD but not in CV
 
 
+class CriterionScore(BaseModel):
+    """
+    One row in the auditable criteria_scores breakdown.
+
+    Replaces the fixed SectionScores with a configurable list (see
+    config/default_criteria.json). Every entry carries its own method tag,
+    max_points, weight and a human-readable rationale so each score is
+    explainable. `overridden_by` records the criterion name that took
+    precedence (populated only when an override applies).
+    """
+    name: str = ""                 # e.g. "experience"
+    score: int = 0                 # points earned (0..max_points)
+    max_points: int = 0            # cap for this criterion
+    weight: float = 0.0            # relative weight (normally max/100)
+    method: str = ""               # e.g. "rule_years", "rule_count"
+    rationale: str = ""            # human-readable explanation, no LLM
+    overridden_by: Optional[str] = None  # which criterion took precedence
+
+
 # ──────────────────────────────────────────────
 # MAIN SCHEMA
 # This is the master object that represents one CV
@@ -109,9 +128,9 @@ class CVSchema(BaseModel):
     Pipeline flow:
         Raw file → [parser] → raw text
                  → [extractor] → fills all fields below
-                 → [scorer] → fills section_scores, total_score, label
+                 → [scorer] → fills criteria_scores, total_score, label
                  → [suggester] → fills suggestions
-                 → [matcher] → fills jd_match  (Week 6)
+                 → [matcher] → fills match  (Week 6)
     """
 
     # --- Identity ---
@@ -134,7 +153,10 @@ class CVSchema(BaseModel):
     leadership: List[str] = []
 
     # --- Scoring (filled by scorer module) ---
+    # Legacy dict view (kept for backward compatibility).
     section_scores: SectionScores = Field(default_factory=SectionScores)
+    # Canonical, auditable breakdown (V2). Scorer fills both.
+    criteria_scores: List[CriterionScore] = Field(default_factory=list)
     total_score: int = 0
     label: str = ""            # "Strong" | "Average" | "Weak"
 
@@ -142,7 +164,20 @@ class CVSchema(BaseModel):
     suggestions: List[str] = []
 
     # --- JD Matching (filled in Week 6) ---
-    jd_match: JDMatch = Field(default_factory=JDMatch)
+    # Renamed jd_match -> match (V2). Accepts legacy "jd_match" on load.
+    match: JDMatch = Field(
+        default_factory=JDMatch,
+        validation_alias=AliasChoices("match", "jd_match"),
+    )
+
+    @property
+    def jd_match(self) -> JDMatch:
+        """Backward-compatible alias for `match` (pre-V2 name)."""
+        return self.match
+
+    @jd_match.setter
+    def jd_match(self, value) -> None:
+        self.match = value
 
 
     # ──────────────────────────────────────────
@@ -172,7 +207,7 @@ class CVSchema(BaseModel):
         Exports the CV object as a plain Python dictionary.
         Useful for converting to pandas DataFrame rows.
         """
-        return self.model_dump()
+        return self.model_dump(by_alias=True, exclude_none=True)
 
     def summary(self) -> str:
         """

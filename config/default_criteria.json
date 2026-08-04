@@ -1,0 +1,55 @@
+{
+  "criteria_version": "1.0",
+  "total_points": 100,
+  "criteria": [
+    {
+      "name": "experience",
+      "method": "rule_years",
+      "max_points": 25,
+      "weight": 0.25,
+      "rationale_template": "{roles} roles totalling {years:.1f} years of experience"
+    },
+    {
+      "name": "projects",
+      "method": "rule_count",
+      "max_points": 20,
+      "weight": 0.20,
+      "rationale_template": "{projects} projects ({linked} with a live/GitHub link)"
+    },
+    {
+      "name": "skills",
+      "method": "rule_ratio",
+      "max_points": 20,
+      "weight": 0.20,
+      "rationale_template": "{skills} matched skills (target {target})"
+    },
+    {
+      "name": "education",
+      "method": "rule_degree",
+      "max_points": 15,
+      "weight": 0.15,
+      "rationale_template": "Highest credential which awards {points} base points"
+    },
+    {
+      "name": "certifications",
+      "method": "rule_count",
+      "max_points": 10,
+      "weight": 0.10,
+      "rationale_template": "{certs} certifications at {per}/cert"
+    },
+    {
+      "name": "languages",
+      "method": "rule_tiers",
+      "max_points": 5,
+      "weight": 0.05,
+      "rationale_template": "{languages} languages spoken"
+    },
+    {
+      "name": "leadership",
+      "method": "rule_count",
+      "max_points": 5,
+      "weight": 0.05,
+      "rationale_template": "{leadership_count} leadership/volunteer roles"
+    }
+  ]
+}
