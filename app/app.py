@@ -15,6 +15,7 @@ Features:
 """
 
 import hashlib
+import html
 import json
 import os
 import subprocess
@@ -328,7 +329,31 @@ def render_metric_card(title, value, subtitle, color):
     )
 
 
-def render_table(items, columns, caption):
+def format_duration(months):
+    if not months:
+        return ""
+    years, rem = divmod(int(months), 12)
+    if years and rem:
+        return f"{years}y {rem}m"
+    if years:
+        return f"{years}y"
+    return f"{rem}m"
+
+
+def jump_to_cv(cid):
+    """Switch the displayed CV from anywhere (session picker, history radio,
+    ranking, skill search). All CV selectors are remounted via a key that
+    includes the active CV id, so their stored widget values cannot override
+    the jump on the following rerun."""
+    db = st.session_state.cv_database
+    if cid not in db or cid == st.session_state.active_cv_id:
+        return
+    st.session_state.cv_cache = db[cid]
+    st.session_state.active_cv_id = cid
+    st.rerun()
+
+
+def render_table(items, columns, caption, formatters=None):
     if not items:
         st.caption(f"No {caption} found.")
         return
@@ -336,7 +361,10 @@ def render_table(items, columns, caption):
     for item in items[:10]:
         row = {}
         for col_key, col_label in columns:
-            row[col_label] = item.get(col_key, "")
+            if formatters and col_key in formatters:
+                row[col_label] = formatters[col_key](item)
+            else:
+                row[col_label] = item.get(col_key, "")
         rows.append(row)
     df = pd.DataFrame(rows)
     st.dataframe(df, width='stretch', hide_index=True)
@@ -535,6 +563,8 @@ def main():
         st.session_state.session_uploads = []
     if "_processed_keys" not in st.session_state:
         st.session_state._processed_keys = set()
+    if "uploader_epoch" not in st.session_state:
+        st.session_state.uploader_epoch = 0
 
     # --- Top bar ---
     top_cols = st.columns([6, 1])
@@ -554,6 +584,7 @@ def main():
             st.session_state.cv_cache = None
             st.session_state.active_cv_id = None
             st.session_state._processed_keys = set()
+            st.session_state.uploader_epoch += 1
             save_database({})
             st.rerun()
 
@@ -635,6 +666,7 @@ def main():
             st.session_state.cv_cache = None
             st.session_state.active_cv_id = None
             st.session_state._processed_keys = set()
+            st.session_state.uploader_epoch += 1
             save_database({})
             st.rerun()
 
@@ -646,7 +678,7 @@ def main():
             "Upload CVs", type=["pdf", "docx", "txt"],
             accept_multiple_files=True,
             label_visibility="collapsed",
-            key="cv_uploader",
+            key=f"cv_uploader_{st.session_state.uploader_epoch}",
         )
 
     with jd_col:
@@ -815,6 +847,14 @@ def main():
             progress_bar.progress(1.0, text=f"Processed {len(new_files)} CV(s)!")
             save_database(st.session_state.cv_database)
 
+            # The uploader is a transient ingest queue. After each batch, empty
+            # it (and forget the in-batch dedup keys) so retained files can
+            # never be reprocessed silently on a later rerun, while a deliberate
+            # re-upload of an existing CV is always re-evaluated in its own batch.
+            st.session_state.uploader_epoch += 1
+            st.session_state._processed_keys = set()
+            st.rerun()
+
     # --- Results ---
     show_detail = st.session_state.cv_cache is not None
 
@@ -867,12 +907,12 @@ def main():
             with cols[1]:
                 cur = st.session_state.active_cv_id
                 idx = next((i for i, (_, c) in enumerate(picker_labels) if c == cur), 0)
-                selected = st.selectbox("", [l for l, _ in picker_labels], index=idx, key="session_cv_picker")
+                selected = st.selectbox("CV to view", [l for l, _ in picker_labels],
+                    label_visibility="collapsed",
+                    index=idx, key=f"session_cv_picker_{cur}")
                 picked_cid = dict(picker_labels)[selected]
                 if picked_cid != cur:
-                    st.session_state.cv_cache = st.session_state.cv_database[picked_cid]
-                    st.session_state.active_cv_id = picked_cid
-                    st.rerun()
+                    jump_to_cv(picked_cid)
             with cols[2]:
                 st.empty()
         else:
@@ -937,7 +977,7 @@ def main():
             "\U0001F91D JD Match",
             "\U0001F3C6 Ranking",
             "\U0001F50D Skill Search",
-        ])
+        ], key="main_tabs")
 
         with tabs[0]:
             col_a, col_b = st.columns(2)
@@ -946,9 +986,17 @@ def main():
                 st.markdown(f"**Email:** {cv.get('email', 'N/A')}")
                 st.markdown(f"**Phone:** {cv.get('phone', 'N/A')}")
                 skills = cv.get("skills", [])
-                skills_str = ", ".join(skills)
                 st.markdown(f"**Skills ({len(skills)}):**")
-                st.text_area("skills", skills_str, height=100, label_visibility="collapsed", key="skills_area")
+                if skills:
+                    chips = "".join(
+                        f"<span style='display:inline-block;background:rgba(129,140,248,0.12);"
+                        f"border:1px solid {PURPLE};border-radius:0.375rem;padding:0.05rem 0.6rem;"
+                        f"margin:0.1rem 0.2rem;font-size:0.85rem;'>{html.escape(str(s))}</span>"
+                        for s in skills
+                    )
+                    st.markdown(chips, unsafe_allow_html=True)
+                else:
+                    st.caption("No skills detected.")
                 if cv.get("languages"):
                     langs = ", ".join(
                         (l.get("language", "") if isinstance(l, dict) else str(l))
@@ -961,7 +1009,8 @@ def main():
                 render_table(
                     cv.get("experience", []),
                     [("title", "Title"), ("company", "Company"), ("duration", "Duration")],
-                    "experience entries"
+                    "experience entries",
+                    formatters={"duration": lambda i: format_duration(i.get("duration_months"))},
                 )
                 render_table(
                     cv.get("education", []),
@@ -1011,13 +1060,12 @@ def main():
                 default_idx = list(radio_labels.values()).index(st.session_state.active_cv_id) if st.session_state.active_cv_id in radio_labels.values() else 0
                 selected_label = st.radio(
                     "Select CV:", list(radio_labels.keys()),
-                    index=default_idx, key="history_cv_radio", label_visibility="collapsed",
+                    index=default_idx, key=f"history_cv_radio_{st.session_state.active_cv_id}",
+                    label_visibility="collapsed",
                 )
                 target_cid = radio_labels[selected_label]
                 if target_cid != st.session_state.active_cv_id:
-                    st.session_state.cv_cache = db[target_cid]
-                    st.session_state.active_cv_id = target_cid
-                    st.rerun()
+                    jump_to_cv(target_cid)
 
                 st.divider()
                 filter_q = st.text_input("Filter by name:", "", key="cv_filter", placeholder="Type to filter...")
@@ -1136,13 +1184,11 @@ def main():
 
                     st.divider()
                     pick = st.selectbox("View ranked CV:", [""] + [r["name"] for r in ranked],
-                                        key="ranking_pick")
+                                        key=f"ranking_pick_{st.session_state.active_cv_id}")
                     if pick:
                         target = next((c for c in cvs if c["name"] == pick), None)
                         if target and target["cv_id"] in db:
-                            st.session_state.cv_cache = db[target["cv_id"]]
-                            st.session_state.active_cv_id = target["cv_id"]
-                            st.rerun()
+                            jump_to_cv(target["cv_id"])
                 except Exception as e:
                     st.warning(f"Ranking failed: {e}")
 
@@ -1156,18 +1202,19 @@ def main():
                 mode = st.radio("Match mode:", ["ALL (AND)", "ANY (OR)"], horizontal=True, key="skill_search_mode")
                 if query:
                     query_skills = {s.strip().lower() for s in query.split(",") if s.strip()}
+                    from src.extractor.skill_extractor import expand_skill_set
                     results = []
                     for cid, entry in db.items():
                         cv_s = entry.get("cv", {}).get("skills", [])
-                        cv_skills_lower = {s.lower().strip() for s in cv_s}
+                        cv_skills_lower = expand_skill_set(cv_s)
                         matched_skills = query_skills & cv_skills_lower
+                        missing = query_skills - cv_skills_lower
                         if mode.startswith("ALL"):
                             if matched_skills == query_skills:
-                                missing = query_skills - cv_skills_lower
                                 results.append((cid, entry, matched_skills, missing))
                         else:
                             if matched_skills:
-                                results.append((cid, entry, matched_skills, set()))
+                                results.append((cid, entry, matched_skills, missing))
 
                     if results:
                         st.write(f"**{len(results)}** CV(s) match:")
@@ -1178,21 +1225,20 @@ def main():
                                 "Name": cv_d.get("name", "Unknown"),
                                 "Score": cv_d.get("total_score", 0),
                                 "Matched Skills": ", ".join(sorted(matched_skills)),
-                                "Missing": ", ".join(sorted(missing)) if missing else "",
+                                "Unmatched Skills": ", ".join(sorted(missing)) if missing else "\u2014",
                             })
                         res_df = pd.DataFrame(rows)
                         st.dataframe(res_df, width='stretch', hide_index=True, use_container_width=True)
 
-                        search_names = [r["Name"] for r in rows]
-                        search_cids = [r[0] for r in results]
-                        pick = st.selectbox("Jump to CV:", [""] + search_names, key="skill_search_pick")
-                        if pick:
-                            pk_idx = search_names.index(pick)
-                            pk_cid = search_cids[pk_idx]
-                            if pk_cid != st.session_state.active_cv_id:
-                                st.session_state.cv_cache = db[pk_cid]
-                                st.session_state.active_cv_id = pk_cid
-                                st.rerun()
+                        for pk_cid, _m, _g, _missing in results:
+                            nm = db[pk_cid]["cv"].get("name", "Unknown")
+                            a, b = st.columns([1, 7])
+                            with a:
+                                if st.button(
+                                        "View", key=f"jump_{pk_cid}",
+                                        help=f"Open {nm} in the detail view",
+                                        width="stretch"):
+                                    jump_to_cv(pk_cid)
                     else:
                         st.info("No CVs match the specified skills.")
                 else:

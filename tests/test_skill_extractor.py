@@ -4,7 +4,11 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.extractor.skill_extractor import extract_skills, load_skills
+from src.extractor.skill_extractor import (
+    extract_skills,
+    load_skills,
+    expand_skill_set,
+)
 
 TAXONOMY_PATH = os.path.join(
     os.path.dirname(__file__), "..", "config", "skill_taxonomy.json"
@@ -85,3 +89,35 @@ class TestExtractSkills:
     def test_file_not_found_raises(self):
         with pytest.raises(FileNotFoundError):
             load_skills("nonexistent_path.json")
+
+
+class TestExpandSkillSet:
+
+    def test_keeps_full_skill(self):
+        assert "python" in expand_skill_set(["Python"])
+
+    def test_splits_chained_comma_skills(self):
+        result = expand_skill_set(["React.js, Next.js, Vue.js"])
+        assert {"react.js", "next.js", "vue.js"} <= result
+
+    def test_splits_slash_and_trailing_comma(self):
+        result = expand_skill_set(["Python, Django, PostgreSQL,"])
+        assert {"python", "django", "postgresql"} <= result
+
+    def test_splits_and_word(self):
+        result = expand_skill_set(["Data Analysis and Machine Learning"])
+        assert "data analysis" in result
+        assert "machine learning" in result
+
+    def test_keeps_cpp_whole(self):
+        assert "c++" in expand_skill_set(["C++"])
+
+    def test_dot_skills_kept(self):
+        assert "vue.js" in expand_skill_set(["Vue.js"])
+
+    def test_lowercase_and_strip(self):
+        assert "django" in expand_skill_set(["  DJANGO  "])
+
+    def test_empty_and_none(self):
+        assert expand_skill_set([]) == set()
+        assert expand_skill_set(None) == set()

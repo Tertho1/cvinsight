@@ -3,6 +3,45 @@
 **Generated:** July 18, 2026  
 **2026-08-05 note:** Bangla CV support research compiled — `docs/research_bangla_cv_support.md`  
 
+## 2026-08-08 (evening) — App fixes: skill search + experience duration
+
+- **Skill Search fixed**: skills stored as chained spans (e.g. `React.js, Next.js, Vue.js`) failed
+  exact-set matching, so `vue.js`/`next.js`/`shopify` returned nothing even though they were visible
+  in the Extracted Data tab. Added `src/extractor/skill_extractor.expand_skill_set()` — keeps each
+  full entry plus comma/slash/`&`/`|`/`and`/`or`-separated parts (`+` deliberately excluded so `C++`
+  stays one skill); Skill Search tab now queries through it. Verified with Streamlit AppTest:
+  `vue.js` → Ananya Patel; `postgresql` → Vikram, Rahul. `tests/test_skill_extractor.py` +8 → 23.
+- **Experience Duration column fixed**: entries store `duration_months` but the Extracted Data table
+  read a non-existent `duration` key, so Duration was always blank. `app.py` now has `format_duration()`
+  (`48` → `4y`, `19` → `1y 7m`) and `render_table()` gained a per-column `formatters` hook. Verified in
+  AppTest: Duration `4y` / `1y 7m` for Ananya's entries.  
+- **Skills area no longer editable/stale**: the fixed-key `text_area` kept the previous CV's (edited) value.
+  Replaced with read-only skill **chips** rendered fresh each run — switching CV in the Results picker now
+  updates name + chips immediately (AppTest: RAHUL 20 chips → ANANYA 16, `Vue.js` visible).
+- **Upload reprocessing fixed**: `file_uploader` retains every uploaded file, so after any Clear the old
+  files (still attached to the widget) re-triggered full processing even though DB was empty. Both Clear
+  buttons now bump an `uploader_epoch` that is used in the uploader's widget `key`, forcing Streamlit to
+  remount the widget and drop its held files; processing also skips any file whose content-id is already
+  stored in the DB. “Clear All / Clear Database” now genuinely wipes everything.
+- **CV switching fixed across selectors**: three widgets drove the shown CV (top `session_cv_picker`
+  selectbox, History radio, Ranking/Skill "jump" points). A stale persisted widget value overrode an
+  external jump on the next rerun (and the app famously bounced to the Extracted Data tab). Fix:
+  `jump_to_cv(cid)` is the single jump path; all CV selectors remount via a key containing the active CV
+  id (e.g. `session_cv_picker_{cur}`), and `st.tabs(..., key="main_tabs")` preserves the open tab, so a
+  Skill Search hit stays on Skill Search. Verified in AppTest (multi-CV `git` → 3 "View" buttons, click
+  jumps to Rahul and the selection sticks across subsequent reruns). Suite still **436 passing**.  
+- **Re-upload now re-evaluates**: previously any file whose content-id already existed in the DB was
+  silently skipped. The file_uploader is now a *transient ingest queue* — after each batch it is remounted
+  empty (`uploader_epoch`) and the in-batch dedup keys are cleared, so (a) adding a **new** CV evaluates
+  only that one, and (b) deliberately re-uploading an **existing** CV re-runs the full pipeline and
+  overwrites its DB entry (timestamp updates, same content-id preserved). Verified end-to-end in AppTest
+  on `demo/senior_python_dev.txt` (identical re-upload → `timestamp` refreshed, score re-computed).
+- **Skill Search now shows unmatched skills**: the results table gained an **Unmatched Skills** column.
+  Previously ANY-mode entries were hardcoded to an empty missing-set and ALL-mode showed nothing to gap,
+  so a query like `python,git` hid which queried skills a candidate lacked (e.g. ANANYA matched `git`,
+  missing `python`). `missing = query − matched` is now computed and displayed for every returned CV;
+  ALL mode still returns only full matches (no gaps by definition).  
+
 ## 2026-08-08 — Rule + LLM optional backend in the app
 
 Re-integrated the fine-tuned Qwen3-0.6B LoRA as the deeper of **two** extraction modes in the Streamlit app:

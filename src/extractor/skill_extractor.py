@@ -1,5 +1,5 @@
 # src/extractor/skill_extractor.py
-import json, os, spacy
+import json, os, re, spacy
 from spacy.matcher import PhraseMatcher
 
 nlp = spacy.load("en_core_web_sm")
@@ -32,3 +32,27 @@ def extract_skills(text: str, taxonomy_path="config/skill_taxonomy.json") -> lis
     matches = matcher(doc)
     found = list({doc[start:end].text for _, start, end in matches})
     return found
+
+
+def expand_skill_set(skills):
+    """Expand raw skill entries into a set of matchable search tokens.
+
+    Skills can be stored as chained spans (e.g. "React.js, Next.js, Vue.js" or
+    "Python, Django, PostgreSQL,") that are shown as one line in the UI. A
+    naive exact-match search then fails to find the individual skills even
+    though they are visibly present. This returns the full entry plus every
+    comma/slash/&/|/"and"/"or"-separated individual skill.
+
+    "+" is deliberately not a separator so "C++" stays a single skill.
+    """
+    expanded = set()
+    for s in skills or []:
+        low = str(s).strip().lower().strip(".")
+        if not low:
+            continue
+        expanded.add(low)
+        for part in re.split(r"\s*(?:,|、|/|&|\||\band\b|\bor\b)\s*", low):
+            part = part.strip(".").strip()
+            if part:
+                expanded.add(part)
+    return expanded

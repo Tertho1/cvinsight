@@ -1,7 +1,21 @@
 # TODO — CV-Insight
 
-Last updated: 2026-08-08 | App: `streamlit run app/app.py` | Tests: 411 passing
+Last updated: 2026-08-08 | App: `streamlit run app/app.py` | Tests: 436 passing
 ---
+
+## App UX Fixes (2026-08-08)
+
+- [x] **Skill Search finds chained skills** — `src/extractor/skill_extractor.py::expand_skill_set()` splits
+      comma/`&`/`|`/`and`-joined spans (`React.js, Next.js, Vue.js`) so `vue.js` etc. now match.
+- [x] **Experience Duration shown** — `format_duration()` + `render_table(..., formatters)` render
+      `duration_months` as `4y` / `1y 7m` instead of a blank column.
+- [x] **Skills area read-only + CV-switch safe** — editable fixed-key textarea replaced with fresh chips per CV.
+- [x] **Uploads no longer reprocess each other; re-upload re-evaluates** — uploader is a transient ingest
+      queue (remount on `uploader_epoch` per batch); adding a new CV evaluates only it, re-uploading an
+      existing CV re-runs the pipeline and overwrites its DB entry.
+- [x] **CV switching stays put** — `jump_to_cv()` + CV selectors keyed by active id + `st.tabs(key="main_tabs")`
+      so Skill Search jumps don't bounce to the Extracted Data tab; Skill Search shows one "View" button
+      per CV and an **Unmatched Skills** column.
 
 ## Extraction Audit (2026-08-03/04)
 
