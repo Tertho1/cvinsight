@@ -1,11 +1,104 @@
 # CV-Insight — Progress Report
 
 **Generated:** July 18, 2026  
+**2026-08-05 note:** Bangla CV support research compiled — `docs/research_bangla_cv_support.md`  
+
+## 2026-08-08 — Rule + LLM optional backend in the app
+
+Re-integrated the fine-tuned Qwen3-0.6B LoRA as the deeper of **two** extraction modes in the Streamlit app:
+**`spaCy + DistilBERT NER`** (default fast tier) and **`spaCy + Qwen3 LoRA LLM`** (deeper, slower).
+
+- **`src/extractor/hybrid.py`**: `extract_with_llm(raw_text, ..., device="auto")` with a corrected
+  default `adapter="models/qwen3-0.6b-cv-lora-v2"`; lazy torch/peft/transformers import (fast path
+  never pays the load); empty-dict on any failure so the caller falls back cleanly.
+  `fuse(rules_cv, llm_cv)` merges per-field (skills = grounded union; experience/edu prefer the source
+  with more dated entries; leadership/achievements rule-only; dedup on shared entries).
+- **`app/app.py`**: two extraction modes. The **fast default** now always fuses the spaCy/rule pipeline
+  with the fine-tuned DistilBERT tagger (`merge_skills`/`extract_education_gaps`, ~40-90ms/CV). The
+  **Qwen LoRA mode** additionally runs the LLM and `fuse()`s it on top; device selectbox (auto/gpu/cpu);
+  `load_llm_model` wrapped in `@st.cache_resource` so the model loads once per session, not per CV.
+- **NER skill hardening (2026-08-08)**: `_skill_parts()` decomposes the tagger's noisy comm-joined/URL/
+  geo spans; drops junk while preserving real `.js` skills (Vue.js, D3.js). Side-by-side on 10 demo CVs:
+  skill-adds went **+49 noisy → +21 clean**, remaining appends are genuine off-taxonomy skills the rules
+  missed (e.g. Webpack, UX, Express.js). Education gaps stayed +0 everywhere (rules already catch
+  degree/institution).
+- **Measured on RTX 5070 Ti:** Qwen3 load ~5-30s once (cached), then **~27-32s/CV** pure generation
+  (greedy, ~1700-2100 output tokens). Verified on junior_dev.txt (rules 1 exp → fused 2) and
+  `demo/priya_dwivedi_repo_MathewElliot.docx` (fused 11 skills, name correct).
+- **tests**: `tests/test_hybrid.py` (+6, LLM graceful degradation + fuse policy) and
+  `tests/test_ner_skill_filter.py` (+11, cleaned skill merge). Suite now **428**.
+- **Env pitfall fixed:** a stray `grp.py` left in the temp working dir shadowed stdlib `grp` (imported by
+  torch→tarfile), causing a bogus "partially initialized module 'torch'" circular import and a
+  datasets-dill pickle crash. Removed; loads fine from the workspace root. This was the reason the
+  smoke test appeared blocked by a library bug, not a real dependency issue.  
 **Git:** https://github.com/Tertho1/cvinsight  
 **Deployment:** Streamlit Community Cloud previously at https://cvinsight-io.streamlit.app — **currently DOWN (OOM, 1GB RAM insufficient for torch + easyocr)**; needs migration to Render.com/Railway. See TODO "Deployment" + `docs/final_report.md` §5.  
 **Python:** 3.14.6 (Cloud) / 3.14.3 (local)  
 
 ---
+
+## 2026-08-05 — Extraction hardening + matcher LTR probe
+
+- **04 duplicated-cells company edge fixed** — header-scoped ORG fallback in
+  `experience_extractor.py` now requires a **whole-word** match instead of a bare substring,
+  so spacy's "Develop" ORG span (a fragment of "Developer" from a bullet) no longer becomes
+  the company. `demo/benchmark/04_duplicated_cells.docx` now recovers "Brightpath Design".
+  +1 regression test (30 in `test_experience_extractor.py`); **suite 411 passing**; benchmark
+  mean unchanged **56.4**.
+- **Learning-to-rank probed, rejected** — `scripts/train_ranker_ltr.py`: XGBoost `rank:ndcg`
+  over 6 feats {semantic, skill, bm25, token-iou, len_cv, len_jd}, qid=JD, on the
+  human-labeled resume-job-description-fit set. Test NDCG@10: hand blend 0.7401, pure
+  semantic (ConFit) 0.7805, LTR 0.6816 — early stop fired at round 1. Same pattern as
+  BM25: auxiliary/lexical features dilute the ConFit embedding signal. **Not adopted**; pure
+  semantic stays the ranker. Script + resumable feature cache (`models/ranker_ltr_emb_*`)
+  kept for reference/re-runs.
+
+## 2026-08-05 — Bangla section classifier (Onneshon)
+
+- **`scripts/train_bangla_section_classifier.py`** → `models/bangla_section_classifier.pkl`
+  (+ `models/bangla_section_eval.json`). Char n-gram TF-IDF + LR on `data/raw/onneshon_raw.csv`.
+  - Data: 1,739 segments (Experience 823 / Skill 446 / Education 370 / Objective 100),
+    347 exact-dups → 1,392 deduped (leak-safe — every duplicate text has one label).
+  - Results: **5-fold CV acc 0.9454 / macro-F1 0.952**; held-out 0.922 vs majority 0.520;
+    held-out F1 Education 0.949, Experience 0.928, Objective 1.000, Skill 0.874.
+    Confusion is only Skill↔Experience (short tech fragments).
+- **`src/extractor/bangla_section.py`** — lazy-loaded `BanglaSectionClassifier` singleton +
+  `classify_section()`; maps Onneshon labels → CVSchema sections (`summary`/`experience`/
+  `skills`/`education`); returns None if model/text unavailable (mirrors `embedder.py`).
+- **Tests** — `tests/test_bangla_section.py`, 13 tests; full suite **410 passing** (397 + 13).
+- **Scope:** section detection only, not entity extraction — a building block for native
+  Bangla sectioning, not end-to-end Bangla scoring (see `docs/research_bangla_cv_support.md` §8).
+  Not yet wired into `extract_all()`/`app.py`; full upload-demo integration (detection +
+  route + Bangla entities/skills/rubric) is a planned `TODO.md` item, not started.
+
+## 2026-08-05 — Bangla CV support research
+
+- **`docs/research_bangla_cv_support.md`** — feasibility scan for the `progress.md:631`
+  three-phase Bangla plan. Verifies each named resource (Onneshon / B-NER / Sangraha /
+  celloscopeai) actually exists and corrects the plan's key assumption.
+  - **Key correction:** B-NER gives *generic* PER/ORG/LOC entities and celloscopeai gives
+    *person names only* — **no labeled Bangla resume-NER (SKILL/DEGREE/TITLE/COMPANY)
+    dataset exists publicly**. Native entity extraction is not turnkey; it needs a custom
+    labeled set (Onneshon is section-level only). BanNERD (ACL Findings NAACL 2025) is the
+    highest-quality generic Bangla NER source; ANCHOLIK-NER covers dialects only.
+  - **Models:** `sagorsarker/bangla-bert-base`, `csebuetnlp/banglabert` (+ `bnlp-toolkit`
+    for normalization/tokenization/lemmatization), `csebuetnlp/banglishbert` (Latin-script
+    Bengali = the "Banglish" sub-problem). Matcher side already handles Bengali today
+    (`models/matcher-confit`, bge-based, no code change); easyocr (already a dependency)
+    is Bengali-capable so scanned-image OCR needs nothing new.
+  - **Ready-made HF Bangla NER reviewed (§9):** `sagorsarker/mbert-bengali-ner` (wikiann,
+    PER/ORG/LOC, F1 0.971), `Suchandra/bengali_language_NER` (0.967), `Davlan/xlm-roberta-
+    base-wikiann-ner` (multilingual 20-lang), `arafatfahim/BanglaTag` (B-NER, adds DATE/
+    ORG/INST/TITLE but overall F1 0.749, news-domain). **None are resume-domain** — no
+    SKILL/DEGREE/COMPANY labels; usable only as name/org/date support or bootstrap
+    labelers. All are 0.1–0.3B transformers, conflicting with the CPU-only / 1GB Cloud
+    constraint — a mandatory per-CV Bangla NER pass is not viable; a lazy candidate-role
+    one might be. Native Phase 3 = fine-tune our own resume-NER from banglabert/bangla-bert.
+  - **Recommendation:** Phase 2 (translate-to-English via IndicTransv2, then existing
+    `extract_all()`) is the pragmatic first cut — touches only the parse path, low risk.
+    Native (Phase 3) is a large effort (Bangla regex equivalents + a Bangla resume-NER to
+    build + Banglish normalization) and should be gated on confirmed Bengali-language CV
+    demand. Defer is the current reality per `docs/final_report.md:157-158`.
 
 ## 2026-08-05 — Entity-level (span) NER evaluation
 
@@ -114,8 +207,13 @@
   `CV_RANK_WEIGHTS="sem;skill;rub;bm25"`. Result dict gains `bm25_score`; `_default_weights`
   accepts 4 parts.
 - **Tests:** +10 (35 matcher / **397 total** passing).
-- Next: quantify a bm25+semantic hybrid against pure semantic on ATS/benchmark before
-  setting a nonzero default.
+- **Hybrid quantified (2026-08-05)** — `scripts/eval_bm25_hybrid.py` →
+  `models/bm25_hybrid_eval.json`, on the human-labeled resume-JD-fit test (1,759 pairs).
+  Blend `(1-w)*semantic + w*bm25` monitonically *lowers* binary-fit Spearman ρ and
+  NDCG@10 vs pure semantic for every `w>0` (ρ: 0.332→0.315→0.292→0.265; NDCG@10:
+  0.309→0.300→0.246→0.213 for w=0/0.1/0.3/0.5). **Conclusion: keep default `bm25` weight
+  0.0.** BM25 remains opt-in (useful for pool pre-filtering via `score_corpus`, where it
+  never alters the blended score of the default ranker).
 
 ---
 

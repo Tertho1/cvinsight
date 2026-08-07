@@ -216,6 +216,15 @@ def load_ner_tagger():
 
 
 @st.cache_resource
+def load_llm_model(device):
+    from src.extractor.hybrid import load_model
+    if device == "auto":
+        import torch
+        device = "gpu" if torch.cuda.is_available() else "cpu"
+    return load_model(adapter="models/qwen3-0.6b-cv-lora-v2", device=device)
+
+
+@st.cache_resource
 def load_rubric_config():
     if os.path.exists(DEFAULT_RUBRIC_PATH):
         with open(DEFAULT_RUBRIC_PATH) as f:
@@ -590,14 +599,19 @@ def main():
 
         extractor = st.selectbox(
             "Extraction engine",
-            ["Rule-based", "Rule + NER (fast)"],
+            ["spaCy + DistilBERT NER", "spaCy + Qwen3 LoRA LLM"],
             key="extractor_mode",
-            help="'Rule + NER' also runs a small fine-tuned distilbert tagger (~10-60ms) "
-                 "to catch extra skills/education the rules miss. Runs on CPU. Fast, "
-                 "no LLM, no GPU.",
+            help="'spaCy + DistilBERT NER' (default) runs the spaCy/rule pipeline "
+                 "with a fine-tuned DistilBERT tagger fused on top (~10-60ms/CV). "
+                 "'spaCy + Qwen3 LoRA LLM' additionally runs our fine-tuned Qwen3 LoRA "
+                 "for deepest extraction: highest accuracy but slow (~30s/CV on GPU, "
+                 "slower on CPU).",
         )
-        if extractor == "Rule + NER (fast)":
-            st.caption("NER tagger adds grounded skills on top of the rules (~fast).")
+        if extractor == "spaCy + Qwen3 LoRA LLM":
+            llm_device = st.selectbox("LLM device", ["auto", "gpu", "cpu"], key="llm_device",
+                                      help="auto = CUDA if available, else CPU.")
+        else:
+            llm_device = None
 
         custom_weights = {}
         total = 0
@@ -711,19 +725,32 @@ def main():
                         os.unlink(tmp_path)
                         continue
 
-                    if extractor == "Rule + NER (fast)":
-                        st.write("\U0001F4AC Adding NER spans (rule + NER)...")
+                    st.write("\U0001F4AC Fusing DistilBERT NER spans...")
+                    try:
+                        ner_model, ner_tok, _ = load_ner_tagger()
+                        from src.extractor.ner_tag import predict_spans, merge_skills, extract_education_gaps
+                        groups = predict_spans(ner_model, ner_tok, raw_text)
+                        cv["skills"] = merge_skills(cv["skills"], groups)
+                        edu_gaps = extract_education_gaps(cv, groups)
+                        if edu_gaps:
+                            cv["education"] = list(cv["education"] or []) + edu_gaps
+                    except Exception as e:
+                        st.warning(f"DistilBERT NER fusion failed ({e}); spaCy/rule output used.")
+
+                    if extractor == "spaCy + Qwen3 LoRA LLM":
+                        st.write("\U0001F916 Running Qwen3 LoRA LLM extraction...")
                         try:
-                            ner_model, ner_tok, _ = load_ner_tagger()
-                            from src.extractor.ner_tag import predict_spans, merge_skills, extract_education_gaps
-                            groups = predict_spans(ner_model, ner_tok, raw_text)
-                            cv["skills"] = merge_skills(cv["skills"], groups)
-                            edu_gaps = extract_education_gaps(cv, groups)
-                            if edu_gaps:
-                                cv["education"] = list(cv["education"] or []) + edu_gaps
-                            st.write("\u2705 Rule + NER fused (extra skills + education)")
+                            from src.extractor.hybrid import extract_with_llm, fuse
+                            llm_model, llm_tok = load_llm_model(llm_device or "auto")
+                            llm_cv = extract_with_llm(raw_text, model=llm_model,
+                                                      tokenizer=llm_tok)
+                            if llm_cv:
+                                cv = fuse(cv, llm_cv)
+                                st.write("\u2705 Qwen3 LoRA fused (deepest extraction)")
+                            else:
+                                st.warning("LLM extraction returned nothing; DistilBERT output used.")
                         except Exception as e:
-                            st.warning(f"Rule + NER fusion failed ({e}); rule-based used.")
+                            st.warning(f"Qwen3 LoRA fusion failed ({e}); DistilBERT output used.")
 
                     st.write("\U0001F3AF Scoring...")
                     if use_custom_weights and total > 0:

@@ -139,3 +139,12 @@ the budget is met. The only issue is the one-time cold start.
 - [x] Add app-start eager warm-up of the embedder (done 2026-08-05: `warm_up()` in
       `embedder.py` + `preload_matcher()` cache_resource in `app/app.py`; loads at app
       start, cached for the session)
+- [x] Settled BM25 hybrid default (done 2026-08-05: `scripts/eval_bm25_hybrid.py`, test
+      1,759 pairs: any `bm25` weight lowers binary-fit ρ AND NDCG@10 (ρ 0.332→0.265, cut
+      NDCG@10 0.309→0.213). Kept default 0.0; BM25 stays opt-in pool pre-filter.)
+- [x] Learning-to-rank probed (done 2026-08-05: `scripts/train_ranker_ltr.py`, XGBoost
+      `rank:ndcg`, 6 feats [semantic, skill, bm25, token-iou, len_cv, len_jd], qid=JD).
+      Test NDCG@10: hand blend 0.7401, pure semantic (ConFit) 0.7805, LTR 0.6816 (early
+      stop at round 1). Negative — lexical/auxiliary feats dilute the ConFit signal. Not
+      adopted; pure semantic stays the ranker. Feature embeddings cache to
+      `models/ranker_ltr_emb_{split}/` for any rerun.

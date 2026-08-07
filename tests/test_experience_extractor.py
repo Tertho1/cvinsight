@@ -183,3 +183,15 @@ class TestExperienceFalsePositiveFixes:
         result, years = extract_experience(text)
         assert len(result) >= 1
         assert result[0]["company"] == "Acme"
+
+    def test_org_fragment_of_title_not_company(self):
+        # spacy tags "Develop" (a fragment of "Developer") as ORG. A subtitle
+        # check (o in header) would wrongly match it inside the title line
+        # "Web Developer - " and set company="Develop". Whole-word ORG match
+        # must reject it and yield the real company from the line below.
+        text = ("Web Developer - 09/2015 to 05/2019\n"
+                "Brightpath Design, New York\n"
+                "Develop project concepts and maintain optimal workflow.")
+        result, years = extract_experience(text)
+        assert result and result[0]["company"] not in ("", "Develop", "Developer")
+        assert result[0]["company"] == "Brightpath Design"

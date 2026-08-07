@@ -1,6 +1,6 @@
 # TODO — CV-Insight
 
-Last updated: 2026-08-05 | App: `streamlit run app/app.py` | Tests: 387 passing
+Last updated: 2026-08-08 | App: `streamlit run app/app.py` | Tests: 411 passing
 ---
 
 ## Extraction Audit (2026-08-03/04)
@@ -17,7 +17,20 @@ Last updated: 2026-08-05 | App: `streamlit run app/app.py` | Tests: 387 passing
 - [x] **Fix: rubric degree keys** — extractor emits `M.Sc`/`M.Tech`/`M.A`/`M.E` (also `B.A`/`B.E`) but `rubric_config.json` lacked them → master's degrees scored 0. Added keys to `degree_points`
 - [x] **Benchmark CV set** — `scripts/generate_benchmark_cvs.py` → `demo/benchmark/` (10 scenarios, one per failure mode, + `manifest.json` + `_baseline.json`). Baseline mean 46.4 → 53.6 after fixes
 - [x] **Verification** — 361 tests pass; original demo mean unchanged (53.8); benchmark entries/counts now correct (01:2, 03:2, 05:3, 06:3, 08:3)
-- [ ] **Tier 1 next:** span repair for experience title/company (Rebecca "Canvas", srbhr "Front-End" ORG FPs); project title extraction; academic section aliases (invited talks/conferences); fix 04 duplicated-cells skills=7
+- [x] **Tier 1 (verified done in `409343d`)** — span repair for experience title/company via header-scoped
+      ORG check + backtracking (`experience_extractor.py`); project title extraction
+      (`misc_extractor.py` `_is_project_title_line`+`_split_project_text`); academic section aliases
+      (publications/invited talks/conferences → achievements, `section_splitter.py:137-144`);
+      04 duplicated-cells skills (extracts 8 now). Benchmark mean 46.4 → 53.6 → **56.4**
+- [x] **Tier 2a — 04 duplicated-cells company edge (done 2026-08-05):** header-scoped ORG
+      fallback requires a **whole-word** match (`experience_extractor.py`), so spacy's
+      "Develop" (fragment of "Developer") no longer becomes the company; recovers
+      "Brightpath Design". +1 test (30 in `test_experience_extractor.py`), suite 411.
+- [ ] **Tier 2 (still open):** learning-to-rank **probed 2026-08-05 → negative** (NDCG@10
+      0.6816 vs pure semantic 0.7805, early-stop at round 1; lexical feats dilute ConFit —
+      `scripts/train_ranker_ltr.py` kept as record, model not retained); ConFit v2
+      (paraphrase augmentation, RUM) research-only.
+      BM25 default: **settled** — kept 0.0 (hybrid measured 2026-08-05, hurts).
 
 ---
 
@@ -44,8 +57,18 @@ Last updated: 2026-08-05 | App: `streamlit run app/app.py` | Tests: 387 passing
 - [x] **Small-model research (2026-08-04)** — encoder NER is the only CPU-real-time family; generative
   small LLMs (0.5–1.7B) are ~10–60s/CV. Best external candidate: `oksomu/resume-ner` (65M, ~15ms,
   13 resume labels). Our fine-tunes **`models/ner-v1` already covers this schema**.
-- [x] **Streamlit UI**: rule-based default + `Rule + NER (fast)` option; LLM hybrid unplugged
-- [ ] **Bangla CV support** via fine-tune/multilingual (Week 7 left)
+- [x] **Streamlit UI**: **two** extraction modes (2026-08-08) — **`spaCy + DistilBERT NER`** (default fast
+  tier: spaCy/rule + DistilBERT `ner-v1` fused, ~40-90ms/CV) and **`spaCy + Qwen3 LoRA LLM`** (adds Qwen3
+  LoRA fusion; device selectbox auto/gpu/cpu; model loaded once via `load_llm_model` `@st.cache_resource`).
+  Fused via `src/extractor/hybrid.extract_with_llm()`. GPU ~27-32s/CV; graceful `{}` fallback on any failure.
+- [x] **Bangla CV research** — `docs/research_bangla_cv_support.md` (2026-08-05): no public labeled Bangla
+      resume-NER exists; recommend Phase-2 translate route. Parked by user decision (not worth building now).
+- [x] **Bangla section classifier** — built + eval'd (2026-08-05): `scripts/train_bangla_section_classifier.py`
+      → `models/bangla_section_classifier.pkl` (char-ngram TF-IDF + LR, 5-fold CV acc 0.9454, held-out F1 0.952).
+      Loader `src/extractor/bangla_section.py` (lazy singleton, Onneshon→CVSchema map, graceful None).
+      **Standalone — not wired into `extract_all()`/`app.py`.** 13 tests.
+- [ ] **Bangla upload demo** (deferred, parked): detect + section/translate routing + Bangla entity extraction
+      + Bangla skills/rubric — per research doc §8 recommendation
 
 ## Current Priority — Adopted from V2 Proposals
 
@@ -131,7 +154,8 @@ Hardware: RTX 5070 Ti (local inference & training).
 - [ ] **Compact JSON format** — train with `indent=None` instead of `indent=2` to save ~60% output tokens
 - [ ] **Add more datasets** — include NER (3.3k), ATS (5k), Classification (12k) for diversity
 - [ ] **Retrain** — expect better quality with cleaner data
-- [ ] **Integrate LLM extractor** into pipeline as optional backend
+- [x] **Integrate LLM extractor** into pipeline as optional backend — done 2026-08-08 (`spaCy + Qwen3 LoRA
+      LLM` app mode; `src/extractor/hybrid.extract_with_llm()` + `fuse()`; device select; cached load; GPU ~30s/CV)
 
 ---
 
@@ -180,9 +204,29 @@ Hardware: RTX 5070 Ti (local inference & training).
 
 ### Bangla/Bengali CV Support — Three-Phase Plan
 
-- [ ] **Phase 1 (now)**: Fine-tune Qwen3-0.6B on English CVs only
-- [ ] **Phase 2**: Collect 200-500 Bangla CVs + translate → fine-tune mixed model
-- [ ] **Phase 3**: Native Bangla extraction via Onneshon/B-NER datasets
+- [x] **Research scan (2026-08-05)** — `docs/research_bangla_cv_support.md`: verifies all named
+  resources; key correction = no public labeled *resume-NER* dataset exists (B-NER is generic,
+  celloscopeai is person-name only, Onneshon is section-level). Recommend Phase 2
+  (IndicTransv2 translate → existing `extract_all()`) as the low-risk first cut; native Phase 3
+  is high-effort and should be gated on confirmed Bengali-language CV demand.
+- [x] **Onneshon section classifier (2026-08-05)** — analyzed `data/raw/onneshon_raw.csv`
+  (1,739 segs, 347 exact-dups → 1,392 deduped, leak-safe); trained
+  `scripts/train_bangla_section_classifier.py` → `models/bangla_section_classifier.pkl`
+  (char-ngram TF-IDF + LR): 5-fold CV acc **0.9454**, macro-F1 0.952, held-out 0.922 vs 0.520
+  baseline. Loader `src/extractor/bangla_section.py` (lazy singleton, Onneshon→CVSchema
+  section map, graceful None) + 13 tests (`tests/test_bangla_section.py`). Suite 410 passing.
+  Section detection only — entity extraction/scoring still need Bangla handling.
+- [ ] **Phase 1 (now)**: Fine-tune Qwen3-0.6B on English CVs only (complete — see LLM section)
+- [ ] **Bangla upload demo (planned)** — wire Bangla support into the app so a Bangla CV
+  actually evaluates/scores. Currently the Onneshon classifier is standalone (not called by
+  `extract_all()` or `app.py`); a Bangla upload still runs the English-only path and scores
+  ~nothing. Plan: (a) detect Bangla at parse top (`\u0980-\u09FF`); (b) either route segments
+  through `bangla_section.classify_section()` into the existing extractors, or use the
+  cheaper translate-to-English route (IndicTransv2 → `extract_all()`); (c) add Bangla entity
+  extraction (Bengali dates/degrees/companies) + Bangla skills + rubric awareness for a
+  sensible score. Not started.
+- [ ] **Phase 2**: Collect 200-500 Bangla CVs + translate → feed existing extractor (build gate: detect Bangla + IndicTransv2 translate)
+- [ ] **Phase 3**: Native Bangla extraction — needs Bangla section/date/degree regex + custom Bangla resume-NER (Onneshon/BanNERD labels) + Banglish→Bengali normalization
 
 ### Week 6 — JD Matching & Ranking (V2) ✅
 
@@ -212,7 +256,7 @@ Hardware: RTX 5070 Ti (local inference & training).
 
 - [x] **C: Section-level embedding** — added `score_sections()` / `score_sections_cv_dict()` + `match_cv(mode="section")`. **Finding:** ties whole-doc on the benchmark (NDCG@5 0.98) and is unavailable on the ATS dataset (its resumes have no section headings, so it falls back to whole-doc; identical ρ=0.259). On clean demo CVs it can LOWER the score when skills are inline (no detected skills section). Net: not an improvement yet — keep whole-doc default; revisit once a structured-CV ranking gold set exists.
 - [x] **D: Embedder upgrade + learned weights** — default embedder now `BAAI/bge-small-en-v1.5` (env `CV_EMBEDDER` overrides). Measured on ATS human labels: MiniLM ρ=0.259 → **bge-small ρ=0.348** (bge-base 0.260, slower). Full-suite semantic-vs-human ρ now 0.314 (was 0.288). Ranker weights configurable via `weights=` dict / `CV_RANK_WEIGHTS` env; `scripts/learn_ranker_weights.py` fits semantic:skill ratio → **best_w=1.00** (pure semantic ρ=0.338 vs 0.5-blend 0.075 on ATS: skill-overlap hurts on unstructured ATS text; keep as a hint, not a hard default)
-- [x] **E: Hybrid BM25 + semantic** — `src/matcher/bm25_scorer.py` (hand-rolled Okapi, no new dep). Exposed as an **opt-in 4th ranker signal** (default weight 0.0, so 0.5/0.3/0.2 behaviour unchanged); `score_corpus()` does pool-wide pre-filtering. JD as query / CV as doc with stopword-filtered tokens; single-pair score normalized to [0,1]. Enable via `weights={"bm25": ...}` or 4-part `CV_RANK_WEIGHTS="sem;skill;rub;bm25"`. +10 tests (35 matcher / 397 total passing). Next: quantify a bm25+semantic hybrid against pure semantic on ATS/benchmark before adopting a nonzero default.
+- [x] **E: Hybrid BM25 + semantic** — `src/matcher/bm25_scorer.py` (hand-rolled Okapi, no new dep). Exposed as an **opt-in 4th ranker signal** (default weight 0.0, so 0.5/0.3/0.2 behaviour unchanged); `score_corpus()` does pool-wide pre-filtering. JD as query / CV as doc with stopword-filtered tokens; single-pair score normalized to [0,1].   Enable via `weights={"bm25": ...}` or 4-part `CV_RANK_WEIGHTS="sem;skill;rub;bm25"`. +10 tests (35 matcher / 397 total passing). **Hybrid quantified (2026-08-05)**: `scripts/eval_bm25_hybrid.py` → `models/bm25_hybrid_eval.json` on human-labeled resume-JD-fit; any `w>0` *lowers* rho + NDCG vs pure semantic (0.332→0.265 / 0.309→0.213). **Kept default weight 0.0** — BM25 stays opt-in (pool pre-filter via `score_corpus`).
 - [x] **ConFit-style contrastive fine-tune of bge-small** — `scripts/train_matcher_confit.py`
   fine-tunes `BAAI/bge-small-en-v1.5` with MultipleNegativesRankingLoss on the 6,241
   human-labeled `cnamuangtoun/resume-job-description-fit` train pairs (resume anchor /

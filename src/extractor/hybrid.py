@@ -100,6 +100,38 @@ def extract_json_with_llm(model, tokenizer, text, max_new_tokens=4096):
     return tokenizer.decode(outputs[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True).strip()
 
 
+def extract_with_llm(raw_text: str, model=None, tokenizer=None,
+                     adapter="models/qwen3-0.6b-cv-lora-v2", device="auto") -> dict:
+    """Run the fine-tuned LLM on one resume and return a grounded CVSchema dict.
+
+    Lazily loads the model on first use. `device` may be "auto" (CUDA if
+    available else CPU), "cpu", or "gpu". Returns an empty dict on failure so
+    the caller can fall back to rule-based without plumbing errors.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    if not raw_text or not raw_text.strip():
+        return {}
+    if model is None or tokenizer is None:
+        try:
+            if device == "auto":
+                import torch
+                device = "gpu" if torch.cuda.is_available() else "cpu"
+            model, tokenizer = load_model(adapter=adapter, device=device)
+        except Exception as e:
+            logger.warning(f"LLM extraction model load failed: {e}")
+            return {}
+    try:
+        response = extract_json_with_llm(model, tokenizer, raw_text)
+        raw, ok = parse_llm_response(response)
+        if not ok or not raw:
+            return {}
+        return build_cv(raw, raw_text)
+    except Exception as e:
+        logger.warning(f"LLM extraction failed: {e}")
+        return {}
+
+
 def canon_degree(deg):
     low = (deg or "").strip().lower()
     for key, canon in DEGREE_CANON.items():

@@ -41,7 +41,7 @@ cvinsight/
 │   ├── scorer/           # Rubric scoring engine (✅ done)
 │   ├── matcher/          # JD similarity & ranking (✅ done, Week 6)
 │   └── suggester/        # Suggestion generation (✅ done)
-├── tests/                # 361 unit tests (16 files, all passing)
+├── tests/                # 410 unit tests (19 files, all passing)
 ├── AGENTS.md             # This file
 ├── TODO.md               # Current task tracking
 ├── progress.md           # Weekly progress report
@@ -70,7 +70,7 @@ Pydantic model with nested models (Education, Experience, Project, Certification
 ### Testing
 - Framework: **pytest** (plain asserts, no unittest.TestCase)
 - Run all: `pytest tests/`
-- 387 tests across 18 files (parser: 133, extractor: 285, scorer+suggester+criteria: 61)
+- 410 tests across 19 files (parser: 133, extractor: 285, scorer+suggester+criteria: 61, bangla_section: 13)
 
 ### Python
 - Version: 3.14 (project plan says 3.10 but env is 3.14)
@@ -159,7 +159,11 @@ Pydantic model with nested models (Education, Experience, Project, Certification
 - Matcher research backlog — see `TODO.md` "Matcher improvement pipeline":
   nothing pending there now; remaining backlog is app-side (multi-CV ranking tab).
   E (hybrid BM25) implemented 2026-08-05 (`src/matcher/bm25_scorer.py`, opt-in, default
-  weight 0.0); quantifying a nonzero hybrid default is pending. ConFit-style contrastive
+  weight 0.0); **default settled 2026-08-05 = 0.0** (`scripts/eval_bm25_hybrid.py`: any
+  nonzero BM25 lowers ρ + NDCG@10; BM25 stays a pool pre-filter via `score_corpus`).
+  Learning-to-rank probed 2026-08-05 and **rejected** (`scripts/train_ranker_ltr.py`:
+  XGBoost `rank:ndcg`, test NDCG@10 0.6816 vs pure semantic 0.7805 — auxiliary/lexical
+  feats dilute the ConFit signal; pure semantic stays the ranker). ConFit-style contrastive
   fine-tune done 2026-08-05 (`scripts/train_matcher_confit.py` → `models/matcher-confit`,
   ATS ρ 0.314→0.436, **adopted as the default embedder** in `embedder.py`); the training
   script + dataset-eval remain available for future re-runs.
@@ -167,7 +171,33 @@ Pydantic model with nested models (Education, Experience, Project, Certification
   `resume-job-description-fit` dataset eval done (`scripts/eval_resume_jd_fit.py`,
   confit binary-fit ρ 0.332 vs base 0.216). NETSOL cross-check done (`scripts/eval_netsol_crosscheck.py`, confit ρ 0.345 vs base 0.329).
   Multi-CV ranking tab shipped in the app ("🏆 Ranking") 2026-08-05.
-- Bangla CV support (multilingual: Onneshon, B-NER, AI4Bharat Sangraha) — not built.
+- **LLM backend re-integrated 2026-08-08**: fine-tuned Qwen3-0.6B LoRA restored as the deeper of **two** 
+  app extraction modes: **`spaCy + DistilBERT NER`** (default fast tier: spaCy/rule pipeline + DistilBERT
+  `models/ner-v1` fused, ~40-90ms/CV) and **`spaCy + Qwen3 LoRA LLM`** (adds Qwen3 LoRA fusion).
+  `src/extractor/hybrid.py` exposes `extract_with_llm()` (default `adapter` fixed; lazy heavy imports;
+  empty-dict graceful fallback) + `fuse()`. App: device selectbox (auto/gpu/cpu) + model loaded once via
+  `load_llm_model` `@st.cache_resource`. GPU ~27-32s/CV. `tests/test_hybrid.py` (+6) and
+  `tests/test_ner_skill_filter.py` (+11); suite 428.
+  The NER skill merge was hardened 2026-08-08: `_skill_parts()` splits chained spans, strips punctuation,
+  drops URL/email/location junk while preserving real `.js` skills (e.g. Vue.js, D3.js); measured skill-adds
+  +49 noisy → +21 clean.
+  Watch out: a stray `grp.py` in the temp working dir shadowed stdlib `grp` (torch→tarfile) and caused a
+  bogus "partially initialized module 'torch'" — always run from `D:\Projects\cvinsight` (not a temp cwd)
+  when loading torch.
+- Bangla CV support research done 2026-08-05 (`docs/research_bangla_cv_support.md`):
+  corrects the plan (no public labeled Bangla *resume-NER* exists; B-NER is generic,
+  celloscopeai name-only, Onneshon section-only). Recommend Phase 2 translate route
+  (IndicTransv2 → existing `extract_all()`); native Phase 3 gated on demand. §9 reviewed
+  ready-made HF Bangla NER models (mBERT-wikiann F1 0.971 names/orgs; arafatfahim/BanglaTag
+  adds DATE/ORG/INST but F1 0.749, news-domain, no SKILL/DEGREE) — none are resume-domain;
+  they only serve as name/org/date support or bootstrap labelers.
+- Bangla section classifier built 2026-08-05 (Onneshon): `scripts/train_bangla_section_classifier.py`
+  → `models/bangla_section_classifier.pkl` (char-ngram TF-IDF + LR, 5-fold CV acc 0.9454);
+  loader `src/extractor/bangla_section.py` (lazy singleton, Onneshon→CVSchema section map,
+  graceful None); 13 tests (`tests/test_bangla_section.py`), suite 410. Section detection only —
+  not entity extraction. **Standalone, not wired into `extract_all()`/`app.py` yet** — a Bangla
+  upload still runs the English-only path. Bangla upload demo (detection + section/translate
+  routing + Bangla entity extraction + Bangla skills/rubric) tracked in `TODO.md`, not started.
 - Entity-level NER eval done 2026-08-05 (`scripts/eval_ner_entity_level.py`,
   in-domain span F1 0.988 vs token 0.998; real-resume spans are in-text by construction).
 - Extract seqeval entity-level accuracy on real resumes (current NER F1 is in-domain).

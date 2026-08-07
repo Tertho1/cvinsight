@@ -23,6 +23,19 @@ WINDOW = 480
 OVERLAP = 40
 _MAX_LEN = 512
 
+_NOISE_RE = re.compile(
+    r"https?://|www\.|\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}[\s,]?|"
+    r"\b(?:[a-z0-9-]+\.)+(?:com|org|net|io|co|me|info|edu|github|linkedin|bit\.ly)(?:/|(?=\s*$))|"
+    r"\b[\d]{3}[-.\s][\d]{3}[-.\s][\d]{4}", re.IGNORECASE)
+_LOCATION_TOKEN_RE = re.compile(
+    r"\b(?:mountain view|united states|usa|u\.s\.a\.?|canada|india)\b",
+    re.IGNORECASE)
+_LOCATION_WORDS = {
+    "mountain", "view", "city", "usa", "uk", "california", "ca",
+    "limited", "ltd", "inc", "corp", "company", "university", "college",
+}
+_SPLIT_RE = re.compile(r"[/,;&|]+|\s+and\s+")
+
 
 def load_tagger(adapter="models/ner-v1", device_name="cpu"):
     """Load the fine-tuned token-classification tagger. device_name: 'cpu'|'gpu'."""
@@ -96,18 +109,54 @@ def predict_spans(model, tokenizer, text):
     return groups
 
 
-def merge_skills(rules_skills, ner_groups):
-    """Union of rule-based skills and NER skill spans, deduped case-insensitively.
+def _skill_parts(span):
+    """Split a raw NER skill span into clean, plausible skill tokens.
 
-    Keeps rule casing first; adds any in-text skill spans the taxonomy missed.
+    The tagger often emits one "skill" span that is really a chain of several
+    concepts glued by commas (e.g. "Python, React, Docker,"), plus URLs, emails,
+    locations and trailing punctuation. We break those apart and drop the junk so
+    what lands in the CV skill list is individual, clean skills.
+    """
+    span = str(span).strip().strip(".,;:!?()'\x22").strip()
+    if not span or len(span) < 2:
+        return []
+    if _NOISE_RE.search(span):                       # URL / email / phone
+        return []
+    low = span.lower()
+    if _LOCATION_TOKEN_RE.search(low):               # geo / org marker
+        return []
+    parts = [p.strip().strip(".,;:!?()'\x22").strip()
+             for p in _SPLIT_RE.split(span)]
+    out = []
+    for p in parts:
+        if not p or len(p) < 2:
+            continue
+        if p.lower() in _LOCATION_WORDS:
+            continue
+        if _NOISE_RE.search(p):
+            continue
+        out.append(p)
+    return out
+
+
+def merge_skills(rules_skills, ner_groups):
+    """Union of rule-based skills and cleaned NER skill spans, deduped caseless.
+
+    Keeps rule casing first; adds only plausible, decomposed skill tokens the
+    taxonomy missed. Chained spans are split; URL/email/geo noise is dropped.
     """
     seen, out = set(), []
-    for s in list(rules_skills or []) + list((ner_groups or {}).get("skill", [])):
+    for s in list(rules_skills or []):
         s = str(s).strip()
-        key = s.lower()
-        if key and key not in seen:
-            seen.add(key)
+        if s and s.lower() not in seen:
+            seen.add(s.lower())
             out.append(s)
+    for span in (ner_groups or {}).get("skill", []):
+        for s in _skill_parts(span):
+            key = s.lower()
+            if key and key not in seen:
+                seen.add(key)
+                out.append(s)
     return out
 
 

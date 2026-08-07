@@ -481,8 +481,17 @@ def _parse_experience_text(section_text: str) -> tuple[list[dict], float]:
         # like "PROJECT HIGHLIGHTS\nSnake Game" on Rebecca.
         if not company:
             header_block = "\n".join(leading_lines[-2:])
-            near_orgs = [o for o in org_entities
-                         if _is_plausible_company_org(o) and o in header_block]
+            near_orgs = []
+            for o in org_entities:
+                if not _is_plausible_company_org(o):
+                    continue
+                # Whole-word match only: bare substring would let a one-word
+                # ORG span like "Develop" (a fragment of "Developer") match
+                # inside the title-line "Web Developer -" and wrongly become
+                # the company.
+                esc = re.escape(o)
+                if re.search(r"(?<![^\W_])" + esc + r"(?![^\W_])", header_block):
+                    near_orgs.append(o)
             if near_orgs:
                 company = _clean_company(sorted(near_orgs, key=len, reverse=True)[0])
 
