@@ -480,20 +480,6 @@ def jump_to_cv(cid):
     st.rerun()
 
 
-def _scroll_page_to_top():
-    """Scroll the browser window to the top (no native API in this Streamlit;
-    a tiny same-origin script in the component iframe does it)."""
-    st.components.v1.html(
-        """
-        <script>
-            window.parent.document.documentElement.scrollTop = 0;
-            window.parent.document.body.scrollTop = 0;
-        </script>
-        """,
-        height=20,
-    )
-
-
 def delete_cv(cid):
     """Remove a single CV from the database (and session state), keeping the
     user on a consistent CV. Used by the History tab and the detail header."""
@@ -790,10 +776,6 @@ def main():
         st.session_state.cv_cache = st.session_state.cv_database[jump_cid]
         st.session_state.active_cv_id = jump_cid
         st.session_state["main_tabs"] = 0
-
-    # --- Scroll to the top after a skill-search jump so the CV is visible. ---
-    if st.session_state.pop("_scroll_to_top", False):
-        _scroll_page_to_top()
 
     # --- Top bar ---
     top_cols = st.columns([6, 1])
@@ -1619,7 +1601,6 @@ def main():
                         for i, (cur, prev) in enumerate(zip(new_views, prev_views)):
                             if cur and not prev:
                                 st.session_state["main_tabs"] = 0
-                                st.session_state["_scroll_to_top"] = True
                                 jump_to_cv(cids[i])
                                 break
                         st.session_state["skill_search_prev_views"] = new_views
