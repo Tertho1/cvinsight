@@ -745,6 +745,13 @@ def main():
         [data-testid="stDataFrame"] table {{
             background: transparent !important;
         }}
+        /* Collapse the built-in selection column in the skill-search table so
+           the visible "View" column reads as the click target */
+        [data-testid="stDataFrameColumnSelect"] {{
+            width: 18px;
+            min-width: 18px;
+            max-width: 18px;
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -1570,10 +1577,11 @@ def main():
                                 "Score": cv_d.get("total_score", 0),
                                 "Matched Skills": ", ".join(sorted(matched_skills)),
                                 "Unmatched Skills": ", ".join(sorted(missing)) if missing else "\u2014",
+                                "View": "\U0001F517 Open CV",
                             })
                             cids.append(cid)
                         res_df = pd.DataFrame(rows)
-                        st.caption("Click a row to open that CV in the detail view.")
+                        st.caption("Click **\U0001F517 Open** (or the row) to jump to that CV \u2014 more details, suggestions, and QC gap.")
                         pick = st.dataframe(
                             res_df,
                             width='stretch',
