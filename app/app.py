@@ -46,6 +46,7 @@ MAX_FILE_MB = 50
 PARSE_TIMEOUT = 180
 DATABASE_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "cv_database.json")
 DATABASE_BAK_PATH = DATABASE_PATH + ".bak"
+DATABASE_COUNT_PATH = DATABASE_PATH + ".count"
 PURPLE = "#818cf8"
 GREEN = "#34d399"
 AMBER = "#fbbf24"
@@ -92,6 +93,20 @@ def load_database() -> tuple[dict, str | None]:
     return {}, note
 
 
+def count_saved_cvs() -> int:
+    """Number of CV results persisted on disk, read from a tiny sidecar file so
+    the app can lazy-load the full results (a cheap count at boot instead of
+    parsing the whole JSON)."""
+    if os.path.exists(DATABASE_COUNT_PATH):
+        try:
+            with open(DATABASE_COUNT_PATH, "r", encoding="utf-8") as f:
+                return int(f.read().strip() or 0)
+        except (ValueError, OSError):
+            pass
+    _db, _ = load_database()
+    return len(_db)
+
+
 def save_database(db: dict) -> None:
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
     # Atomic write: dump to a temp file in the same dir, then replace. Avoids a
@@ -105,6 +120,11 @@ def save_database(db: dict) -> None:
         except OSError:
             pass
     os.replace(tmp_path, DATABASE_PATH)
+    try:
+        with open(DATABASE_COUNT_PATH, "w", encoding="utf-8") as f:
+            f.write(str(len(db)))
+    except OSError:
+        pass
 
 
 def build_comparison_df(db: dict) -> pd.DataFrame:
@@ -751,10 +771,11 @@ def main():
     )
 
     if "cv_database" not in st.session_state:
-        _db, _db_note = load_database()
-        st.session_state.cv_database = _db
-        if _db_note:
-            st.warning(_db_note)
+        st.session_state.cv_database = {}
+    if "_cvs_loaded" not in st.session_state:
+        st.session_state["_cvs_loaded"] = False
+    if "_saved_count" not in st.session_state:
+        st.session_state["_saved_count"] = count_saved_cvs()
     if "active_cv_id" not in st.session_state:
         st.session_state.active_cv_id = None
     if "cv_cache" not in st.session_state:
@@ -778,7 +799,7 @@ def main():
         st.session_state["main_tabs"] = 0
 
     # --- Top bar ---
-    top_cols = st.columns([6, 1])
+    top_cols = st.columns([5, 2, 0.7])
     with top_cols[0]:
         st.markdown(
             f"<div style='display:flex; align-items:center; gap:0.75rem; margin-bottom:0.25rem;'>"
@@ -790,11 +811,67 @@ def main():
             unsafe_allow_html=True,
         )
     with top_cols[1]:
-        st.markdown(
-            f"<div style='font-size:0.8rem; color:{MUTED};'>"
-            f"{len(st.session_state.cv_database)} CV(s) saved</div>",
-            unsafe_allow_html=True,
+        n_mem = len(st.session_state.cv_database)
+        n_saved = n_mem if n_mem else st.session_state.get("_saved_count", 0)
+        if st.button(
+            f"\U0001F4C2 {n_saved} CV(s) saved",
+            key="load_saved_btn",
+            width="stretch",
+            disabled=(not n_saved),
+            help="Load the stored CV results from disk and show them the same "
+                 "way as freshly processed CVs.",
+        ):
+            if not st.session_state.cv_database:
+                _db, _db_note = load_database()
+                st.session_state.cv_database = _db
+                st.session_state["_cvs_loaded"] = True
+                st.session_state["_saved_count"] = len(_db)
+                if _db_note:
+                    st.warning(_db_note)
+            if st.session_state.cv_database:
+                _best = max(
+                    st.session_state.cv_database.items(),
+                    key=lambda kv: kv[1].get("cv", {}).get("total_score", 0) or 0,
+                )[0]
+                st.session_state.cv_cache = st.session_state.cv_database[_best]
+                st.session_state.active_cv_id = _best
+                st.session_state["main_tabs"] = 0
+                st.rerun()
+    with top_cols[2]:
+        if st.button(
+            "\U0001F5D1",
+            key="clear_all_btn",
+            width="stretch",
+            disabled=(not st.session_state.cv_database and not st.session_state.get("_saved_count", 0)),
+            help="Clear all stored CV data.",
+        ):
+            st.session_state["_confirm_clear"] = True
+
+    if st.session_state.get("_confirm_clear"):
+        _n_clear = (
+            len(st.session_state.cv_database)
+            if st.session_state.cv_database
+            else st.session_state.get("_saved_count", 0)
         )
+        st.warning(f"This permanently deletes all {_n_clear} stored CV(s). There is no undo.")
+        c_y, c_n = st.columns(2)
+        with c_y:
+            if st.button("Yes, delete everything", type="primary"):
+                st.session_state.cv_database = {}
+                st.session_state.cv_cache = None
+                st.session_state.active_cv_id = None
+                st.session_state.session_uploads = []
+                st.session_state._processed_keys = set()
+                st.session_state.uploader_epoch += 1
+                st.session_state["_cvs_loaded"] = True
+                st.session_state["_saved_count"] = 0
+                st.session_state["_confirm_clear"] = False
+                save_database({})
+                st.rerun()
+        with c_n:
+            if st.button("Cancel"):
+                st.session_state["_confirm_clear"] = False
+                st.rerun()
 
     st.markdown(
         "Upload a CV to extract information, score against **customizable rubric weights**, "
@@ -889,28 +966,6 @@ def main():
                 f"({'custom' if use_custom_weights else 'default'} weights)."
             )
             st.rerun()
-
-        if st.button("\U0001F5D1 Clear all CV data", disabled=(not st.session_state.cv_database)):
-            st.session_state["_confirm_clear"] = True
-        if st.session_state.get("_confirm_clear"):
-            n = len(st.session_state.cv_database)
-            st.warning(f"This permanently deletes all {n} stored CV(s). There is no undo.")
-            c_y, c_n = st.columns(2)
-            with c_y:
-                if st.button("Yes, delete everything", type="primary"):
-                    st.session_state.cv_database = {}
-                    st.session_state.cv_cache = None
-                    st.session_state.active_cv_id = None
-                    st.session_state.session_uploads = []
-                    st.session_state._processed_keys = set()
-                    st.session_state.uploader_epoch += 1
-                    st.session_state["_confirm_clear"] = False
-                    save_database({})
-                    st.rerun()
-            with c_n:
-                if st.button("Cancel"):
-                    st.session_state["_confirm_clear"] = False
-                    st.rerun()
 
     # --- Upload + JD ---
     upload_col, jd_col = st.columns(2)
@@ -1179,15 +1234,13 @@ def main():
                 icon="\U0001F3AF",
             )
 
-        # --- Session CV picker ---
+        # --- CV picker ---
         picker_labels = []
-        if st.session_state.session_uploads:
-            for scid in st.session_state.session_uploads:
-                if scid in st.session_state.cv_database:
-                    e = st.session_state.cv_database[scid]
-                    n = (e["cv"].get("name") or "Unknown")
-                    s = e["cv"].get("total_score", 0)
-                    picker_labels.append((f"{n}  \u2014  {s:.0f}/100", scid))
+        for scid in st.session_state.cv_database:
+            e = st.session_state.cv_database[scid]
+            n = (e["cv"].get("name") or "Unknown")
+            s = e["cv"].get("total_score", 0)
+            picker_labels.append((f"{n}  \u2014  {s:.0f}/100", scid))
         if len(picker_labels) > 1:
             cols = st.columns([1, 2, 6])
             with cols[0]:
