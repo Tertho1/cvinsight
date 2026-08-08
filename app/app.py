@@ -899,20 +899,7 @@ def main():
         )
         st.divider()
 
-        model_pipeline, model_name = load_classifier()
-        if model_pipeline:
-            st.markdown(
-                f"<div style='border:{BORDER}; border-radius:0.75rem; padding:1rem; "
-                f"margin-bottom:1rem;'>"
-                f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;'>"
-                f"<span style='color:{GREEN};'>&#10003;</span>"
-                f"<span style='font-weight:600;'>{model_name}</span>"
-                f"</div>"
-                f"<div style='display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; color:{MUTED};'>"
-                f"<span style='color:{GREEN}; font-size:0.6rem;'>&#9679;</span> Online"
-                f"</div></div>",
-                unsafe_allow_html=True,
-            )
+        model_pipeline, _ = load_classifier()
 
         preload_matcher()
 
