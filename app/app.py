@@ -1581,23 +1581,29 @@ def main():
                                 "Score": cv_d.get("total_score", 0),
                                 "Matched Skills": ", ".join(sorted(matched_skills)),
                                 "Unmatched Skills": ", ".join(sorted(missing)) if missing else "\u2014",
-                                "View": "\u2611 Open",
+                                "View": False,
                             })
                             cids.append(cid)
                         res_df = pd.DataFrame(rows)
-                        st.caption("Tick the **left box** of a row (or click **\u2611 Open**) to go straight to that CV's detail section \u2014 no page reload.")
-                        pick = st.dataframe(
+                        st.caption("Tick the **\u2611 View** box (rightmost column) to open that CV's detail section \u2014 no page reload.")
+                        edited = st.data_editor(
                             res_df,
-                            width='stretch',
                             hide_index=True,
-                            use_container_width=True,
-                            on_select="rerun",
-                            selection_mode="single-row",
-                            key=f"skill_search_pick_{st.session_state.active_cv_id}",
+                            disabled=["Name", "Score", "Matched Skills", "Unmatched Skills"],
+                            column_config={"View": st.column_config.CheckboxColumn("\u2611 View")},
+                            width="stretch",
+                            key=f"skill_search_view_{st.session_state.active_cv_id}",
                         )
-                        if pick.selection.rows:
-                            st.session_state["main_tabs"] = 0
-                            jump_to_cv(cids[int(pick.selection.rows[0])])
+                        new_views = [bool(v) for v in edited["View"].tolist()]
+                        prev_views = st.session_state.get("skill_search_prev_views")
+                        if prev_views is None or len(prev_views) != len(new_views):
+                            prev_views = [False] * len(new_views)
+                        for i, (cur, prev) in enumerate(zip(new_views, prev_views)):
+                            if cur and not prev:
+                                st.session_state["main_tabs"] = 0
+                                jump_to_cv(cids[i])
+                                break
+                        st.session_state["skill_search_prev_views"] = new_views
                     else:
                         st.info("No CVs match the specified skills.")
                 else:
