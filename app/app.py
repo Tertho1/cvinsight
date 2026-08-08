@@ -745,13 +745,6 @@ def main():
         [data-testid="stDataFrame"] table {{
             background: transparent !important;
         }}
-        /* Collapse the built-in selection column in the skill-search table so
-           the visible "View" column reads as the click target */
-        [data-testid="stDataFrameColumnSelect"] {{
-            width: 18px;
-            min-width: 18px;
-            max-width: 18px;
-        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -772,6 +765,17 @@ def main():
         st.session_state._processed_keys = set()
     if "uploader_epoch" not in st.session_state:
         st.session_state.uploader_epoch = 0
+
+    # --- Deep-link from the Skill-Search "View" column (?open_cv=...): open the
+    # app directly on that CV's start (Extracted Data tab). ---
+    jump_cid = st.query_params.get("open_cv", "")
+    if isinstance(jump_cid, (list, tuple)):
+        jump_cid = jump_cid[0] if jump_cid else ""
+    jump_cid = str(jump_cid or "")
+    if jump_cid in st.session_state.cv_database and jump_cid != st.session_state.active_cv_id:
+        st.session_state.cv_cache = st.session_state.cv_database[jump_cid]
+        st.session_state.active_cv_id = jump_cid
+        st.session_state["main_tabs"] = 0
 
     # --- Top bar ---
     top_cols = st.columns([6, 1])
@@ -1569,7 +1573,6 @@ def main():
                     if results:
                         st.write(f"**{len(results)}** CV(s) match:")
                         rows = []
-                        cids = []
                         for cid, entry, matched_skills, missing in results:
                             cv_d = entry.get("cv", {})
                             rows.append({
@@ -1577,22 +1580,22 @@ def main():
                                 "Score": cv_d.get("total_score", 0),
                                 "Matched Skills": ", ".join(sorted(matched_skills)),
                                 "Unmatched Skills": ", ".join(sorted(missing)) if missing else "\u2014",
-                                "View": "\U0001F517 Open CV",
+                                "View": f"?open_cv={cid}",
                             })
-                            cids.append(cid)
                         res_df = pd.DataFrame(rows)
-                        st.caption("Click **\U0001F517 Open** (or the row) to jump to that CV \u2014 more details, suggestions, and QC gap.")
-                        pick = st.dataframe(
+                        st.caption("Click **\U0001F517 Open CV** in the last column to open that CV in the detail view.")
+                        st.dataframe(
                             res_df,
                             width='stretch',
                             hide_index=True,
                             use_container_width=True,
-                            on_select="rerun",
-                            selection_mode="single-row",
-                            key=f"skill_search_pick_{st.session_state.active_cv_id}",
+                            column_config={
+                                "View": st.column_config.LinkColumn(
+                                    "View",
+                                    display_text="\U0001F517 Open CV",
+                                ),
+                            },
                         )
-                        if pick.selection.rows:
-                            jump_to_cv(cids[int(pick.selection.rows[0])])
                     else:
                         st.info("No CVs match the specified skills.")
                 else:
