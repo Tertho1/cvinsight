@@ -515,6 +515,36 @@ def delete_cv(cid):
     st.rerun()
 
 
+@st.dialog("Clear all stored CV data")
+def confirm_clear_all_dialog():
+    """Modal used by the top-bar 🗑 button; a compact centered card instead of
+    a full-width inline warning."""
+    _n_clear = (
+        len(st.session_state.cv_database)
+        if st.session_state.cv_database
+        else st.session_state.get("_saved_count", 0)
+    )
+    st.warning(f"This permanently deletes all {_n_clear} stored CV(s). There is no undo.")
+    c_y, c_n = st.columns(2)
+    with c_y:
+        if st.button("Yes, delete everything", type="primary", width="stretch"):
+            st.session_state.cv_database = {}
+            st.session_state.cv_cache = None
+            st.session_state.active_cv_id = None
+            st.session_state.session_uploads = []
+            st.session_state._processed_keys = set()
+            st.session_state.uploader_epoch += 1
+            st.session_state["_cvs_loaded"] = True
+            st.session_state["_saved_count"] = 0
+            st.session_state["_confirm_clear"] = False
+            save_database({})
+            st.rerun()
+    with c_n:
+        if st.button("Cancel", width="stretch"):
+            st.session_state["_confirm_clear"] = False
+            st.rerun()
+
+
 @st.cache_data(show_spinner=False)
 def _rank_cvs_cached(cvs_tuple, jd_text):
     """Stable re-ranking of a CV snapshot against a JD.
@@ -848,30 +878,7 @@ def main():
             st.session_state["_confirm_clear"] = True
 
     if st.session_state.get("_confirm_clear"):
-        _n_clear = (
-            len(st.session_state.cv_database)
-            if st.session_state.cv_database
-            else st.session_state.get("_saved_count", 0)
-        )
-        st.warning(f"This permanently deletes all {_n_clear} stored CV(s). There is no undo.")
-        c_y, c_n = st.columns(2)
-        with c_y:
-            if st.button("Yes, delete everything", type="primary"):
-                st.session_state.cv_database = {}
-                st.session_state.cv_cache = None
-                st.session_state.active_cv_id = None
-                st.session_state.session_uploads = []
-                st.session_state._processed_keys = set()
-                st.session_state.uploader_epoch += 1
-                st.session_state["_cvs_loaded"] = True
-                st.session_state["_saved_count"] = 0
-                st.session_state["_confirm_clear"] = False
-                save_database({})
-                st.rerun()
-        with c_n:
-            if st.button("Cancel"):
-                st.session_state["_confirm_clear"] = False
-                st.rerun()
+        confirm_clear_all_dialog()
 
     st.markdown(
         "Upload a CV to extract information, score against **customizable rubric weights**, "
