@@ -1570,6 +1570,11 @@ def main():
                             if matched_skills:
                                 results.append((cid, entry, matched_skills, missing))
 
+                    results.sort(
+                        key=lambda r: (r[1].get("cv", {}).get("total_score", 0) or 0),
+                        reverse=True,
+                    )
+
                     if results:
                         st.write(f"**{len(results)}** CV(s) match:")
                         rows = []
