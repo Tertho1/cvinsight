@@ -913,58 +913,59 @@ def main():
         )
 
     with jd_col:
-        st.markdown(
-            f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;'>"
-            f"<span style='font-size:1.3rem;'>&#128269;</span>"
-            f"<span style='font-weight:600;'>Job Description (optional)</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-        jd_text = st.text_area(
-            "Paste the job description here for matching...",
-            value=st.session_state.get("_jd_text", ""),
-            height=120,
-            placeholder="e.g. Looking for a Python developer with Django and PostgreSQL experience...",
-            label_visibility="collapsed",
-            key="jd_input",
-        )
-        btn_primary, btn_rematch = st.columns(2)
-        with btn_primary:
-            if st.button("Match", key="jd_match_btn", width="stretch"):
-                if jd_text.strip():
-                    st.session_state["_jd_text"] = jd_text
-        with btn_rematch:
-            if st.button(
-                "Match all stored CVs",
-                key="jd_rematch_all_btn",
-                width="stretch",
-                help="Update stored JD match scores for every CV against the "
-                     "JD above. One click instead of visiting each CV.",
-            ):
-                if not jd_text.strip():
-                    st.warning("Paste a job description first, then click \u201CMatch all stored CVs\u201D.")
-                elif not st.session_state.cv_database:
-                    st.warning("Upload CVs first, then match them against the JD.")
-                else:
-                    from src.matcher.ranker import match_cv
-                    n = 0
-                    for e in st.session_state.cv_database.values():
-                        try:
-                            e["match"] = match_cv(
-                                cv_text=e.get("raw_text", ""),
-                                cv_skills=e.get("cv", {}).get("skills", []),
-                                jd_text=jd_text.strip(),
-                                rubric_score=e.get("cv", {}).get("total_score", 0),
-                            )
-                            n += 1
-                        except Exception:
-                            continue
-                    st.session_state["_jd_text"] = jd_text
-                    st.session_state["_last_matched_jd"] = jd_text.strip()
-                    st.session_state["_last_match_all_t"] = datetime.now().isoformat()
-                    save_database(st.session_state.cv_database)
-                    st.success(f"Re-matched {n} CV(s) to the current JD.")
-                    st.rerun()
+        with st.container(border=True):
+            st.markdown(
+                f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;'>"
+                f"<span style='font-size:1.3rem;'>&#128269;</span>"
+                f"<span style='font-weight:600;'>Job Description (optional)</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            jd_text = st.text_area(
+                "Paste the job description here for matching...",
+                value=st.session_state.get("_jd_text", ""),
+                height=120,
+                placeholder="e.g. Looking for a Python developer with Django and PostgreSQL experience...",
+                label_visibility="collapsed",
+                key="jd_input",
+            )
+            btn_primary, btn_rematch = st.columns(2)
+            with btn_primary:
+                if st.button("Match", key="jd_match_btn", width="stretch"):
+                    if jd_text.strip():
+                        st.session_state["_jd_text"] = jd_text
+            with btn_rematch:
+                if st.button(
+                    "Match all stored CVs",
+                    key="jd_rematch_all_btn",
+                    width="stretch",
+                    help="Update stored JD match scores for every CV against the "
+                         "JD above. One click instead of visiting each CV.",
+                ):
+                    if not jd_text.strip():
+                        st.warning("Paste a job description first, then click \u201CMatch all stored CVs\u201D.")
+                    elif not st.session_state.cv_database:
+                        st.warning("Upload CVs first, then match them against the JD.")
+                    else:
+                        from src.matcher.ranker import match_cv
+                        n = 0
+                        for e in st.session_state.cv_database.values():
+                            try:
+                                e["match"] = match_cv(
+                                    cv_text=e.get("raw_text", ""),
+                                    cv_skills=e.get("cv", {}).get("skills", []),
+                                    jd_text=jd_text.strip(),
+                                    rubric_score=e.get("cv", {}).get("total_score", 0),
+                                )
+                                n += 1
+                            except Exception:
+                                continue
+                        st.session_state["_jd_text"] = jd_text
+                        st.session_state["_last_matched_jd"] = jd_text.strip()
+                        st.session_state["_last_match_all_t"] = datetime.now().isoformat()
+                        save_database(st.session_state.cv_database)
+                        st.success(f"Re-matched {n} CV(s) to the current JD.")
+                        st.rerun()
 
     # --- Pipeline visualization ---
     render_pipeline()
