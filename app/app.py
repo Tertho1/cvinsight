@@ -68,6 +68,17 @@ def get_match(entry: dict) -> dict:
     return m if isinstance(m, dict) else {}
 
 
+def app_logo_data_uri() -> str:
+    """Base64 data URI of app/logo.png (empty string if the file is absent)."""
+    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+    if not os.path.exists(logo_path):
+        return ""
+    import base64
+    with open(logo_path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("ascii")
+    return f"data:image/png;base64,{b64}"
+
+
 def load_database() -> tuple[dict, str | None]:
     """Load the persisted CV database, returning (db, note).
 
@@ -795,6 +806,33 @@ def main():
         [data-testid="stDataFrame"] table {{
             background: transparent !important;
         }}
+
+        /* Sidebar header: float the collapse arrow over the top-right so the
+           brand (logo + text) shares the same top row instead of sitting
+           below a reserved strip. */
+        [data-testid="stSidebarContent"] {{
+            position: relative;
+        }}
+        [data-testid="stSidebarHeader"] {{
+            position: absolute;
+            top: 0;
+            right: 0;
+            left: auto;
+            z-index: 20;
+            padding: 0.5rem 0.5rem 0 0;
+            background: transparent;
+        }}
+        [data-testid="stSidebarHeader"] [data-testid="stLogoSpacer"] {{
+            display: none;
+        }}
+        [data-testid="stSidebarHeader"] [data-testid="stSidebarCollapseButton"] button {{
+            background: transparent;
+            box-shadow: none;
+        }}
+        /* Tighten the space around sidebar section dividers */
+        [data-testid="stSidebar"] hr {{
+            margin: 0.4rem 0;
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -829,11 +867,17 @@ def main():
         st.session_state["main_tabs"] = 0
 
     # --- Top bar ---
+    _logo_uri = app_logo_data_uri()
     top_cols = st.columns([5, 2, 0.7])
     with top_cols[0]:
+        _bar_logo = (
+            f"<img src='{_logo_uri}' style='height:3rem; width:auto;' />"
+            if _logo_uri
+            else "<div style='font-size:2rem;'>&#128196;</div>"
+        )
         st.markdown(
             f"<div style='display:flex; align-items:center; gap:0.75rem; margin-bottom:0.25rem;'>"
-            f"<div style='font-size:2rem;'>&#128196;</div>"
+            f"{_bar_logo}"
             f"<div>"
             f"<div style='font-size:1.8rem; font-weight:700;'>CV-Insight</div>"
             f"<div style='font-size:0.85rem; color:{MUTED};'>AI-Powered CV Scorer & Job Description Matcher</div>"
@@ -890,9 +934,14 @@ def main():
     default_weights = load_default_weights(rubric_config)
 
     with st.sidebar:
+        _logo_img = (
+            f"<img src='{_logo_uri}' style='height:2.4rem; width:auto;' />"
+            if _logo_uri
+            else f"<div style='font-size:1.5rem;'>&#128196;</div>"
+        )
         st.markdown(
-            f"<div style='display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;'>"
-            f"<div style='font-size:1.5rem;'>&#128196;</div>"
+            f"<div style='display:flex; align-items:center; gap:0.75rem; margin-bottom:0.5rem; padding:5px 3rem 0 0;'>"
+            f"{_logo_img}"
             f"<div><div style='font-weight:700;'>CV-Insight</div>"
             f"<div style='font-size:0.75rem; color:{MUTED};'>AI-Powered CV Scorer & Job Description Matcher</div></div></div>",
             unsafe_allow_html=True,
@@ -903,9 +952,7 @@ def main():
 
         preload_matcher()
 
-        st.markdown(f"<div style='font-weight:600; color:{PURPLE}; margin-bottom:0.5rem;'>&#9881;&#65039; Rubric Weights</div>", unsafe_allow_html=True)
-        st.caption("Adjust to match your hiring priorities.") 
-        st.divider()
+        st.markdown("<div style='height:5px;'></div>", unsafe_allow_html=True)
 
         extractor = st.selectbox(
             "Extraction engine",
@@ -922,6 +969,16 @@ def main():
                                       help="auto = CUDA if available, else CPU.")
         else:
             llm_device = None
+
+        st.markdown("<div style='height:5px;'></div>", unsafe_allow_html=True)
+
+        st.divider()
+
+        st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
+
+        st.markdown(f"<div style='font-weight:600; color:{PURPLE}; margin-bottom:0.5rem;'>&#9881;&#65039; Rubric Weights</div>", unsafe_allow_html=True)
+        st.caption("Adjust to match your hiring priorities.")
+        st.divider()
 
         custom_weights = {}
         total = 0
@@ -940,12 +997,21 @@ def main():
 
         st.divider()
 
+        st.markdown("<div style='height:3px;'></div>", unsafe_allow_html=True)
+
+        _rescore_available = bool(
+            st.session_state.cv_database or st.session_state.get("_saved_count", 0)
+        )
         if st.button(
             "\U0001F501 Re-score all CVs",
-            disabled=(not st.session_state.cv_database),
+            disabled=(not _rescore_available),
             help="Re-runs scoring + suggestions for every stored CV using the "
                  "weight sliders (and the Apply custom weights toggle).",
         ):
+            if not st.session_state.cv_database:
+                _db, _db_note = load_database()
+                st.session_state.cv_database = _db
+                st.session_state["_cvs_loaded"] = True
             parse_cv, split_sections, extract_all, score_cv_fn, generate_suggestions_fn = (
                 get_parser_extractor_scorer()
             )
@@ -955,11 +1021,13 @@ def main():
                     use_custom_weights, total, score_cv_fn, generate_suggestions_fn,
                 )
             save_database(st.session_state.cv_database)
-            st.success(
-                f"Re-scored {len(st.session_state.cv_database)} CV(s) "
-                f"({'custom' if use_custom_weights else 'default'} weights)."
+            st.session_state["_rescore_msg"] = (
+                f"Re-scored {len(st.session_state.cv_database)} CV(s) with "
+                f"{'custom' if use_custom_weights else 'default'} weights."
             )
             st.rerun()
+        if st.session_state.get("_rescore_msg"):
+            st.success(st.session_state.pop("_rescore_msg"))
 
     # --- Upload + JD ---
     upload_col, jd_col = st.columns(2)
