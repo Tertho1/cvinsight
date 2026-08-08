@@ -67,6 +67,19 @@ def _extract_skills_from_section(skills_raw: str) -> list[str] | None:
 
 
 def extract_all(text: str, sections: dict, file_bytes: bytes = b"") -> dict:
+    """Full extraction entry point. When Bengali script is detected, routes to
+    the Bangla transliteration path (src.extractor.bangla_extractor) so a
+    Bengali CV scores through the same rubric; otherwise runs the English
+    engine."""
+    from src.extractor.bangla_extractor import is_bangla
+
+    if is_bangla(text):
+        from src.extractor.bangla_extractor import extract_bangla
+        return extract_bangla(text, file_bytes=file_bytes)
+    return _extract_all_english(text, sections or {}, file_bytes)
+
+
+def _extract_all_english(text: str, sections: dict, file_bytes: bytes = b"") -> dict:
     hash_source = file_bytes if file_bytes else text.encode("utf-8")
     cv_id = hashlib.md5(hash_source).hexdigest()[:12]
 
@@ -193,6 +206,7 @@ def extract_all(text: str, sections: dict, file_bytes: bytes = b"") -> dict:
     cv_dict = {
         "cv_id": cv_id,
         "raw_text": text,
+        "language": "en",
         "name": contacts["name"],
         "email": contacts["email"],
         "phone": contacts["phone"],

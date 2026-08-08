@@ -146,12 +146,16 @@ fragment to one of four sections and does not extract company/date/degree spans,
 building block for native Bangla sectioning (beside `section_splitter.py`), not end-to-end
 Bangla extraction. Entity extraction + scoring still need their own Bangla handling (§5-B).
 
-**Open / next step.** The classifier is **standalone — not yet wired into the pipeline**
-(it is not called by `extract_all()` or `app.py`). A Bangla CV uploaded today still runs the
-English-only path and returns little/no score. To get a real Bangla score the work is: Bangla
-detection at parse top → route segments through `classify_section()` (or use the cheaper
-translate-to-English route with IndicTransv2) → Bangla entity extraction (Bengali dates/
-degrees/companies) → Bangla skills + rubric awareness. Tracked in `TODO.md` (Bangla upload demo).
+**Status (updated 2026-08-08).** The Bangla route shipped — `extract_all()` now detects Bangla
+script (`is_bangla` in `src/extractor/bangla_extractor.py`) and routes to `extract_bangla()`:
+it transliterates Bengali digits, months, date markers, degree words, spoken languages and
+section headings (with the Onneshon classifier as the sectioning fallback) so the existing
+English extractors fire; Latin tech terms, emails and phones pass through untouched. The app
+shows a "Language: Bangla" badge and skips English NER/ML for Bengali CVs. This is the 
+*section-structure + transliteration* route ("Option 1" in the session's native rule-based
+decision), which sits between the research doc's §5 Option A (translate) and Option B (native NER).
+Residual polish for full §5-B native extraction (Bangla company/title regexes, Banglish
+normalization, Bangla resume-NER) is tracked in `TODO.md` Phase 3.
 
 ---
 

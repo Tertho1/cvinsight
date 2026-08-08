@@ -2,22 +2,23 @@
 Streamlit V1 — CV-Insight
 
 Upload a CV (PDF/DOCX/TXT) → parse → extract → score (rubric)
-→ classify (ML: TF-IDF + XGBoost) → suggest improvements
-→ Compare rubric vs ML labels
+→ classify (ML: hybrid XGBoost + semantic embedding) → suggest improvements
+→ Match against a job description + rank candidates
 
 Features:
-- Adjustable rubric weights per section
+- Adjustable rubric weights per section (with re-score-all)
 - Structured tables for experience/education/projects
 - Pipeline step visualization
-- Section mini-score-cards
+- Section mini-score-cards with rationale + top-3-to-improve
 - Key strengths extraction
-- Session history (last 5 results)
+- Persistent CV database (History, Skill Search, Ranking, CSV/JSON export)
 """
 
 import hashlib
 import html
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -39,10 +40,12 @@ MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 CONFIG_DIR = os.path.join(PROJECT_ROOT, "config")
 XGB_PATH = os.path.join(MODELS_DIR, "xgb_classifier.pkl")
 LR_PATH = os.path.join(MODELS_DIR, "lr_baseline.pkl")
+HYBRID_PATH = os.path.join(MODELS_DIR, "classifier_v3_hybrid_synth.pkl")
 DEFAULT_RUBRIC_PATH = os.path.join(CONFIG_DIR, "rubric_config.json")
 MAX_FILE_MB = 50
 PARSE_TIMEOUT = 180
 DATABASE_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "cv_database.json")
+DATABASE_BAK_PATH = DATABASE_PATH + ".bak"
 PURPLE = "#818cf8"
 GREEN = "#34d399"
 AMBER = "#fbbf24"
@@ -64,26 +67,52 @@ def get_match(entry: dict) -> dict:
     return m if isinstance(m, dict) else {}
 
 
-def load_database() -> dict:
-    try:
-        if os.path.exists(DATABASE_PATH):
+def load_database() -> tuple[dict, str | None]:
+    """Load the persisted CV database, returning (db, note).
+
+    If the main file is corrupt, fall back to the .bak snapshot. The note is
+    surfaced to the UI so data loss is never silent (previous behaviour
+    returned {} on any error, which looked exactly like an innocent empty DB).
+    """
+    note = None
+    if os.path.exists(DATABASE_PATH):
+        try:
             with open(DATABASE_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except (json.JSONDecodeError, Exception):
-        pass
-    return {}
+                return json.load(f), None
+        except (json.JSONDecodeError, OSError) as e:
+            note = f"cv_database.json was unreadable ({e}). "
+    if os.path.exists(DATABASE_BAK_PATH):
+        try:
+            with open(DATABASE_BAK_PATH, "r", encoding="utf-8") as f:
+                restored = json.load(f)
+            note = (note or "") + f"Recovered {len(restored)} CV(s) from backup."
+            return restored, note
+        except (json.JSONDecodeError, OSError) as e:
+            note = (note or "") + f"Backup file also unreadable ({e}). "
+    return {}, note
 
 
 def save_database(db: dict) -> None:
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-    with open(DATABASE_PATH, "w", encoding="utf-8") as f:
+    # Atomic write: dump to a temp file in the same dir, then replace. Avoids a
+    # crash mid-write corrupting the DB (a very real risk for ~MB-sized files).
+    tmp_path = DATABASE_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(db, f, indent=2, default=str)
+    if os.path.exists(DATABASE_PATH):
+        try:
+            shutil.copy2(DATABASE_PATH, DATABASE_BAK_PATH)
+        except OSError:
+            pass
+    os.replace(tmp_path, DATABASE_PATH)
 
 
 def build_comparison_df(db: dict) -> pd.DataFrame:
     rows = []
     for cid, entry in db.items():
         cv = entry.get("cv", {})
+        engine = entry.get("extractor", "")
+        engine = engine.replace("spaCy + ", "")
         rows.append({
             "cv_id": cid,
             "Name": cv.get("name", "Unknown"),
@@ -93,6 +122,8 @@ def build_comparison_df(db: dict) -> pd.DataFrame:
             "Experience": len(cv.get("experience", [])),
             "Education": len(cv.get("education", [])),
             "Projects": len(cv.get("projects", [])),
+            "Engine": engine,
+            "Flagged": len(entry.get("warnings") or []),
             "Filename": entry.get("filename", ""),
             "Date": entry.get("timestamp", "")[:10] if entry.get("timestamp") else "",
         })
@@ -147,10 +178,39 @@ def _section_color(score, max_pts):
     return RED
 
 
+def force_classifier_cpu(model):
+    """Pin an XGBoost-backed classifier to CPU.
+
+    The hybrid model pickle was saved with `device=cuda`, and on Windows an
+    XGBoost predict that must fall back from a CUDA booster to a CPU DMatrix
+    can hard-crash the whole process (seen in app crashes during CV classify).
+    Force the booster to CPU at load so predict never touches the device path.
+    """
+    try:
+        reg = getattr(model, "regressor", None)
+        if reg is None or not hasattr(reg, "get_booster"):
+            return
+        reg.set_params(device="cpu")
+        booster = reg.get_booster()
+        booster.set_param("device", "cpu")
+        reg._Booster = booster
+    except Exception:
+        pass
+
+
 @st.cache_resource
 def load_classifier():
     import joblib
     import warnings as _w
+    if os.path.exists(HYBRID_PATH):
+        try:
+            with _w.catch_warnings():
+                _w.simplefilter("ignore")
+                clf = joblib.load(HYBRID_PATH)
+                force_classifier_cpu(clf)
+                return clf, "Hybrid (v3 synth)"
+        except Exception as e:
+            st.warning(f"Hybrid classifier load failed ({e}), falling back to XGBoost...")
     if os.path.exists(XGB_PATH):
         try:
             with _w.catch_warnings():
@@ -259,15 +319,25 @@ def load_default_weights(config):
 def classify_text(model, text):
     import numpy as np
     raw = model.predict([text])[0]
+    classes = None
+    if hasattr(model, "label_classes_"):
+        classes = list(model.label_classes_)
+    elif hasattr(model, "classes_"):
+        classes = list(model.classes_)
+    if classes is not None:
+        classes = [str(c) for c in classes]
     if isinstance(raw, (int, float, np.integer, np.floating, type(None))):
-        label_map = getattr(model, "label_classes_", ["Average", "Strong", "Weak"])
-        label = label_map[int(raw)]
+        if classes is not None:
+            label = classes[int(raw)]
+        else:
+            label_map = ["Average", "Strong", "Weak"]
+            label = label_map[int(raw)]
     else:
         label = str(raw)
     proba = None
     if hasattr(model, "predict_proba"):
         proba = model.predict_proba([text])[0]
-    return label, proba
+    return label, proba, classes
 
 
 def safe_parse_cv(path):
@@ -313,6 +383,54 @@ def make_custom_config(base_config, custom_weights):
     return config
 
 
+def weights_key(custom_weights):
+    """Stable fingerprint of the weight sliders. Stored per CV so the UI can
+    tell whether a stored score was computed with the weights now on screen."""
+    if not custom_weights:
+        return None
+    return json.dumps(custom_weights, sort_keys=True)
+
+
+def write_weights_config(rubric_config, custom_weights):
+    """Write the current sliders to a temp rubric JSON and return its path.
+    The caller must rm the path when done (see score_and_suggest)."""
+    custom_config = make_custom_config(rubric_config, custom_weights)
+    tmp_config = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False, encoding="utf-8"
+    )
+    json.dump(custom_config, tmp_config)
+    path = tmp_config.name
+    tmp_config.close()
+    return path
+
+
+def score_and_suggest(cv, rubric_config, custom_weights, use_custom_weights, total,
+                     score_cv_fn, generate_suggestions):
+    """Score a CV dict (and rebuild suggestions) against the current weight
+    sliders. Uses a temp rubric config so the scorer, the suggester, and the
+    stored weights all describe the same rubric. Returns (cv, suggestions,
+    weights_key)."""
+    weights_key_value = None
+    tmp_path = None
+    if use_custom_weights and total > 0:
+        tmp_path = write_weights_config(rubric_config, custom_weights)
+        weights_key_value = weights_key(custom_weights)
+    try:
+        if tmp_path is not None:
+            cv = score_cv_fn(cv, config_path=tmp_path)
+            suggestions = generate_suggestions(cv, config_path=tmp_path)
+        else:
+            cv = score_cv_fn(cv)
+            suggestions = generate_suggestions(cv)
+    finally:
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    return cv, suggestions, weights_key_value
+
+
 BORDER = "2px solid rgba(128,128,128,0.35)"
 
 
@@ -353,6 +471,38 @@ def jump_to_cv(cid):
     st.rerun()
 
 
+def delete_cv(cid):
+    """Remove a single CV from the database (and session state), keeping the
+    user on a consistent CV. Used by the History tab and the detail header."""
+    db = st.session_state.cv_database
+    if cid not in db:
+        return
+    del db[cid]
+    if cid in st.session_state.session_uploads:
+        st.session_state.session_uploads.remove(cid)
+    st.session_state.cv_cache = None
+    st.session_state.active_cv_id = None
+    save_database(db)
+    st.rerun()
+
+
+@st.cache_data(show_spinner=False)
+def _rank_cvs_cached(cvs_tuple, jd_text):
+    """Stable re-ranking of a CV snapshot against a JD.
+
+    Caches the full embed+score pipeline keyed on (CV data, JD), so tab
+    switches / page reruns do not re-embed every CV (~seconds of CPU) each
+    time. The cache key changes automatically whenever any CV's text or skills
+    change, so results never go stale.
+    """
+    from src.matcher.ranker import rank_cvs
+    cvs = [
+        {"cv_id": c, "name": n, "raw_text": r, "skills": list(sk), "total_score": sc}
+        for c, n, r, sk, sc in cvs_tuple
+    ]
+    return rank_cvs(cvs, jd_text)
+
+
 def render_table(items, columns, caption, formatters=None):
     if not items:
         st.caption(f"No {caption} found.")
@@ -377,7 +527,7 @@ def render_pipeline():
         ("\U0001F4E5", "Parse", "Text extraction"),
         ("\U0001F50D", "Extract", "NER + rules"),
         ("\U0001F3AF", "Score", "Rubric 0-100"),
-        ("\U0001F9EA", "Classify", "XGBoost ML"),
+        ("\U0001F9EA", "Classify", "Hybrid ML"),
         ("\U0001F4A1", "Suggest", "Improvement tips"),
     ]
     cols = st.columns([3, 1, 3, 1, 3, 1, 3, 1, 3])
@@ -435,7 +585,7 @@ def render_section_cards(section_scores, rubric_config, custom_weights, criteria
                 f"<div style='height:4px; width:{pct:.0f}%; background:{color}; "
                 f"border-radius:2px;'></div>"
                 f"</div>"
-                + (f"<div style='font-size:0.65rem; color:{MUTED}; margin-top:0.5rem;'>{rationale}</div>"
+                + (f"<div style='font-size:0.72rem; color:{MUTED}; margin-top:0.5rem;'>{rationale}</div>"
                    if rationale else "")
                 + "</div>",
                 unsafe_allow_html=True,
@@ -468,6 +618,44 @@ def extract_key_strengths(cv, total_score):
     if not strengths:
         strengths.append("CV parsed successfully")
     return strengths
+
+
+def top_improvements(cv):
+    """Rank rubric criteria worst-first by (score / max_points), return top 3."""
+    criteria = cv.get("criteria_scores") or []
+    rows = []
+    for c in criteria:
+        max_pts = c.get("max_points", 0)
+        if max_pts <= 0:
+            continue
+        frac = (c.get("score", 0) / max_pts) * 100
+        rows.append((frac, c))
+    rows.sort(key=lambda x: x[0])
+    return [(c, frac) for frac, c in rows[:3]]
+
+
+def render_top_improvements(cv):
+    items = top_improvements(cv)
+    if not items:
+        return
+    st.markdown("### \U0001F3AF Top areas to improve")
+    for c_entry, frac in items:
+        label = (c_entry.get("name") or "").replace("_", " ").title()
+        pct = max(0, min(100, int(round(frac))))
+        color = _section_color(frac, 100.0)
+        st.markdown(
+            f"<div style='display:flex; align-items:center; gap:0.6rem; "
+            f"margin-bottom:0.35rem;'>"
+            f"<span style='flex:0 0 130px; font-weight:600; font-size:0.85rem;'>{label}</span>"
+            f"<div style='flex:1; height:6px; background:rgba(128,128,128,0.15); "
+            f"border-radius:3px;'>"
+            f"<div style='height:6px; width:{pct}%; background:{color}; border-radius:3px;'></div>"
+            f"</div>"
+            f"<span style='flex:0 0 40px; text-align:right; font-size:0.8rem; "
+            f"color:{MUTED};'>{frac:.0f}%</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def main():
@@ -554,7 +742,10 @@ def main():
     )
 
     if "cv_database" not in st.session_state:
-        st.session_state.cv_database = load_database()
+        _db, _db_note = load_database()
+        st.session_state.cv_database = _db
+        if _db_note:
+            st.warning(_db_note)
     if "active_cv_id" not in st.session_state:
         st.session_state.active_cv_id = None
     if "cv_cache" not in st.session_state:
@@ -579,14 +770,11 @@ def main():
             unsafe_allow_html=True,
         )
     with top_cols[1]:
-        if st.button("\U0001F5D1 Clear All", type="secondary"):
-            st.session_state.cv_database = {}
-            st.session_state.cv_cache = None
-            st.session_state.active_cv_id = None
-            st.session_state._processed_keys = set()
-            st.session_state.uploader_epoch += 1
-            save_database({})
-            st.rerun()
+        st.markdown(
+            f"<div style='font-size:0.8rem; color:{MUTED};'>"
+            f"{len(st.session_state.cv_database)} CV(s) saved</div>",
+            unsafe_allow_html=True,
+        )
 
     st.markdown(
         "Upload a CV to extract information, score against **customizable rubric weights**, "
@@ -661,14 +849,48 @@ def main():
 
         st.divider()
 
-        if st.button("\U0001F5D1 Clear Database"):
-            st.session_state.cv_database = {}
-            st.session_state.cv_cache = None
-            st.session_state.active_cv_id = None
-            st.session_state._processed_keys = set()
-            st.session_state.uploader_epoch += 1
-            save_database({})
+        if st.button(
+            "\U0001F501 Re-score all CVs",
+            disabled=(not st.session_state.cv_database),
+            help="Re-runs scoring + suggestions for every stored CV using the "
+                 "weight sliders (and the Apply custom weights toggle).",
+        ):
+            parse_cv, split_sections, extract_all, score_cv_fn, generate_suggestions_fn = (
+                get_parser_extractor_scorer()
+            )
+            for _name, _e in st.session_state.cv_database.items():
+                _e["cv"], _e["suggestions"], _e["weights_key"] = score_and_suggest(
+                    _e["cv"], rubric_config, custom_weights,
+                    use_custom_weights, total, score_cv_fn, generate_suggestions_fn,
+                )
+            save_database(st.session_state.cv_database)
+            st.success(
+                f"Re-scored {len(st.session_state.cv_database)} CV(s) "
+                f"({'custom' if use_custom_weights else 'default'} weights)."
+            )
             st.rerun()
+
+        if st.button("\U0001F5D1 Clear all CV data", disabled=(not st.session_state.cv_database)):
+            st.session_state["_confirm_clear"] = True
+        if st.session_state.get("_confirm_clear"):
+            n = len(st.session_state.cv_database)
+            st.warning(f"This permanently deletes all {n} stored CV(s). There is no undo.")
+            c_y, c_n = st.columns(2)
+            with c_y:
+                if st.button("Yes, delete everything", type="primary"):
+                    st.session_state.cv_database = {}
+                    st.session_state.cv_cache = None
+                    st.session_state.active_cv_id = None
+                    st.session_state.session_uploads = []
+                    st.session_state._processed_keys = set()
+                    st.session_state.uploader_epoch += 1
+                    st.session_state["_confirm_clear"] = False
+                    save_database({})
+                    st.rerun()
+            with c_n:
+                if st.button("Cancel"):
+                    st.session_state["_confirm_clear"] = False
+                    st.rerun()
 
     # --- Upload + JD ---
     upload_col, jd_col = st.columns(2)
@@ -704,6 +926,33 @@ def main():
                 st.session_state["_jd_submitted"] = True
             else:
                 st.session_state["_jd_submitted"] = False
+            rematch_all = st.form_submit_button(
+                "Match all stored CVs",
+                disabled=(not st.session_state.cv_database or not jd_text.strip()),
+                help="Update stored JD match scores for every CV against the "
+                     "JD above. One click instead of visiting each CV.",
+            )
+            if rematch_all:
+                st.session_state["_jd_text"] = jd_text
+                st.session_state["_jd_submitted"] = True
+                from src.matcher.ranker import match_cv
+                n = 0
+                for e in st.session_state.cv_database.values():
+                    try:
+                        e["match"] = match_cv(
+                            cv_text=e.get("raw_text", ""),
+                            cv_skills=e.get("cv", {}).get("skills", []),
+                            jd_text=jd_text.strip(),
+                            rubric_score=e.get("cv", {}).get("total_score", 0),
+                        )
+                        n += 1
+                    except Exception:
+                        continue
+                st.session_state["_last_matched_jd"] = jd_text.strip()
+                st.session_state["_last_match_all_t"] = datetime.now().isoformat()
+                save_database(st.session_state.cv_database)
+                st.success(f"Re-matched {n} CV(s) to the current JD.")
+                st.rerun()
 
     # --- Pipeline visualization ---
     render_pipeline()
@@ -740,6 +989,7 @@ def main():
                     tmp_path = tmp.name
 
                 status = st.status(f"Processing {f.name}...", expanded=(i == 0))
+                pwarns = []
 
                 with status:
                     st.write("\U0001F4E5 Parsing file...")
@@ -759,52 +1009,54 @@ def main():
 
                     st.write("\U0001F4AC Fusing DistilBERT NER spans...")
                     try:
-                        ner_model, ner_tok, _ = load_ner_tagger()
+                        if cv.get("language") == "bangla":
+                            pwarns.append("Bengali CV: English DistilBERT NER fusion skipped.")
+                        else:
+                            ner_model, ner_tok, _ = load_ner_tagger()
                         from src.extractor.ner_tag import predict_spans, merge_skills, extract_education_gaps
-                        groups = predict_spans(ner_model, ner_tok, raw_text)
-                        cv["skills"] = merge_skills(cv["skills"], groups)
+                        groups = {"skill": [], "degree": [], "institution": []}
+                        if cv.get("language") != "bangla":
+                            groups = predict_spans(ner_model, ner_tok, raw_text)
+                            cv["skills"] = merge_skills(cv["skills"], groups)
                         edu_gaps = extract_education_gaps(cv, groups)
                         if edu_gaps:
                             cv["education"] = list(cv["education"] or []) + edu_gaps
                     except Exception as e:
                         st.warning(f"DistilBERT NER fusion failed ({e}); spaCy/rule output used.")
+                        pwarns.append(f"DistilBERT NER fusion failed ({e}); spaCy/rule output used.")
 
                     if extractor == "spaCy + Qwen3 LoRA LLM":
-                        st.write("\U0001F916 Running Qwen3 LoRA LLM extraction...")
-                        try:
-                            from src.extractor.hybrid import extract_with_llm, fuse
-                            llm_model, llm_tok = load_llm_model(llm_device or "auto")
-                            llm_cv = extract_with_llm(raw_text, model=llm_model,
-                                                      tokenizer=llm_tok)
-                            if llm_cv:
-                                cv = fuse(cv, llm_cv)
-                                st.write("\u2705 Qwen3 LoRA fused (deepest extraction)")
-                            else:
-                                st.warning("LLM extraction returned nothing; DistilBERT output used.")
-                        except Exception as e:
-                            st.warning(f"Qwen3 LoRA fusion failed ({e}); DistilBERT output used.")
+                        if cv.get("language") == "bangla":
+                            pwarns.append("Bengali CV: Qwen3 LoRA LLM is English-only — skipped (rule + Bangla NER output used).")
+                        else:
+                            st.write("\U0001F916 Running Qwen3 LoRA LLM extraction...")
+                            try:
+                                from src.extractor.hybrid import extract_with_llm, fuse
+                                llm_model, llm_tok = load_llm_model(llm_device or "auto")
+                                llm_cv = extract_with_llm(raw_text, model=llm_model,
+                                                          tokenizer=llm_tok)
+                                if llm_cv:
+                                    cv = fuse(cv, llm_cv)
+                                    st.write("\u2705 Qwen3 LoRA fused (deepest extraction)")
+                                else:
+                                    st.warning("LLM extraction returned nothing; DistilBERT output used.")
+                                    pwarns.append("LLM extraction returned nothing; DistilBERT output used.")
+                            except Exception as e:
+                                st.warning(f"Qwen3 LoRA fusion failed ({e}); DistilBERT output used.")
+                                pwarns.append(f"Qwen3 LoRA fusion failed ({e}); DistilBERT output used.")
 
                     st.write("\U0001F3AF Scoring...")
-                    if use_custom_weights and total > 0:
-                        custom_config = make_custom_config(rubric_config, custom_weights)
-                        tmp_config = tempfile.NamedTemporaryFile(
-                            mode="w", suffix=".json", delete=False, encoding="utf-8"
-                        )
-                        json.dump(custom_config, tmp_config)
-                        tmp_config_path = tmp_config.name
-                        tmp_config.close()
-                        cv = score_cv_fn(cv, config_path=tmp_config_path)
-                        os.unlink(tmp_config_path)
-                    else:
-                        cv = score_cv_fn(cv)
-
                     st.write("\U0001F4A1 Generating suggestions...")
-                    suggestions = generate_suggestions(cv)
+                    cv, suggestions, entry_weights_key = score_and_suggest(
+                        cv, rubric_config, custom_weights, use_custom_weights, total,
+                        score_cv_fn, generate_suggestions,
+                    )
 
                     ml_label = None
                     ml_proba = None
-                    if model_pipeline:
-                        ml_label, ml_proba = classify_text(model_pipeline, raw_text)
+                    ml_classes = None
+                    if model_pipeline and cv.get("language") != "bangla":
+                        ml_label, ml_proba, ml_classes = classify_text(model_pipeline, raw_text)
 
                     jd_match_result = None
                     current_jd = st.session_state.get("_jd_text", "")
@@ -821,6 +1073,7 @@ def main():
                             st.session_state["_last_matched_jd"] = current_jd.strip()
                         except Exception as e:
                             st.warning(f"JD matching failed for {f.name}: {e}")
+                            pwarns.append(f"JD matching failed: {e}")
                             jd_match_result = None
 
                 os.unlink(tmp_path)
@@ -831,11 +1084,14 @@ def main():
                     "filename": f.name,
                     "timestamp": datetime.now().isoformat(),
                     "extractor": extractor,
+                    "weights_key": entry_weights_key,
+                    "warnings": pwarns,
                     "raw_text": raw_text,
                     "cv": cv,
                     "suggestions": suggestions,
                     "ml_label": ml_label,
                     "ml_proba": ml_proba.tolist() if hasattr(ml_proba, 'tolist') else ml_proba,
+                    "ml_classes": ml_classes,
                     "match": jd_match_result,
                 }
                 st.session_state._processed_keys.add((cid, extractor))
@@ -867,6 +1123,7 @@ def main():
         suggestions = entry["suggestions"]
         ml_label = entry["ml_label"]
         ml_proba = entry.get("ml_proba")
+        ml_classes = entry.get("ml_classes")
         if isinstance(ml_proba, str):
             ml_proba = None
         jd_match = get_match(entry)
@@ -890,6 +1147,14 @@ def main():
 
         total_score = cv.get("total_score", 0)
         rubric_label = cv.get("label", "Unknown")
+
+        current_weights_key = weights_key(custom_weights) if use_custom_weights and total > 0 else None
+        if entry.get("weights_key") != current_weights_key:
+            st.warning(
+                "\u26A0\uFE0F The rubric sliders changed since this CV was scored. "
+                "Use 'Re-score all CVs with these weights' in the sidebar to apply them.",
+                icon="\U0001F3AF",
+            )
 
         # --- Session CV picker ---
         picker_labels = []
@@ -917,6 +1182,19 @@ def main():
                 st.empty()
         else:
             st.markdown(f"<div style='font-size:1.25rem; font-weight:700;'>\U0001F4CA Results</div>", unsafe_allow_html=True)
+        badge = entry.get("extractor", "")
+        lang_badge = cv.get("language")
+        badges = []
+        if lang_badge and lang_badge != "en":
+            badges.append(f"Language: **{lang_badge.title()}**")
+        if badge:
+            badges.append(f"Extraction engine: **{badge}**")
+        if badges:
+            st.caption("\n".join(badges))
+        entry_warnings = entry.get("warnings") or []
+        if entry_warnings:
+            for _w in entry_warnings:
+                st.warning(_w, icon="\u26A0\uFE0F")
         kpi_cols = st.columns(4)
         with kpi_cols[0]:
             render_metric_card(
@@ -930,7 +1208,11 @@ def main():
                 ml_color = LABEL_COLORS.get(ml_label, "#888")
                 conf_str = ""
                 if ml_proba is not None and isinstance(ml_proba, (list, tuple)):
-                    idx = {"Average": 0, "Strong": 1, "Weak": 2}.get(ml_label, 0)
+                    idx = 0
+                    if ml_classes and ml_label in ml_classes:
+                        idx = ml_classes.index(ml_label)
+                    elif isinstance(ml_label, str) and ml_label in ("Average", "Strong", "Weak"):
+                        idx = {"Average": 0, "Strong": 1, "Weak": 2}[ml_label]
                     if idx < len(ml_proba):
                         conf_str = f"Confidence: {ml_proba[idx]:.1%}"
                 render_metric_card("ML CLASSIFICATION", ml_label, conf_str, ml_color)
@@ -966,6 +1248,7 @@ def main():
             section_scores, rubric_config, custom_weights,
             criteria_scores=cv.get("criteria_scores", []),
         )
+        render_top_improvements(cv)
 
         # --- Tabs ---
         st.divider()
@@ -1034,6 +1317,31 @@ def main():
                 st.info("No suggestions needed.")
 
         with tabs[2]:
+            try:
+                from src.parser.section_splitter import split_sections
+                sections = split_sections(raw_text)
+            except Exception:
+                sections = {}
+            if sections:
+                st.markdown("**Sections found**")
+                col_s = st.columns(4)
+                sec_items = sorted(sections.items())
+                for _si, (_k, _v) in enumerate(sec_items):
+                    with col_s[_si % 4]:
+                        txt = str(_v or "")
+                        st.markdown(
+                            f"<div style='border:{BORDER}; border-radius:0.5rem; "
+                            f"padding:0.4rem 0.6rem; margin-bottom:0.4rem;'>"
+                            f"<span style='font-weight:600; font-size:0.8rem; color:{PURPLE};'>"
+                            f"{html.escape(_k)}</span> "
+                            f"<span style='font-size:0.75rem; color:{MUTED};'>"
+                            f"{len(txt)} chars</span></div>",
+                            unsafe_allow_html=True,
+                        )
+                st.divider()
+            else:
+                st.caption("No sections detected by the splitter.")
+            st.markdown("**Raw extracted text**")
             st.text_area("Extracted text", raw_text, height=250, label_visibility="collapsed")
 
         with tabs[3]:  # History — CV selector + comparison table
@@ -1074,6 +1382,25 @@ def main():
                     df = df[df["Name"].str.lower().str.contains(filter_q.lower(), na=False)]
                 st.dataframe(df, width='stretch', hide_index=True, use_container_width=True)
                 st.caption(f"{len(db)} CV(s) total")
+
+                st.divider()
+                del_rows = [l for l in radio_labels if st.session_state.active_cv_id != radio_labels[l]]
+                if del_rows:
+                    c_del_a, c_del_b, _ = st.columns([2, 2, 3])
+                    with c_del_a:
+                        del_label = st.selectbox(
+                            "Remove a CV:", ["(select a CV)"] + del_rows,
+                            key="hist_delete_pick", label_visibility="collapsed",
+                        )
+                    with c_del_b:
+                        if st.button(
+                            "\U0001F5D1 Delete selected CV", type="secondary",
+                            disabled=(del_label == "(select a CV)"),
+                            key="hist_delete_btn",
+                        ) and del_label in radio_labels:
+                            delete_cv(radio_labels[del_label])
+                else:
+                    st.caption("Upload more CVs to enable single-CV removal.")
 
                 st.divider()
                 dl_cols = st.columns(2)
@@ -1148,29 +1475,31 @@ def main():
                 st.info("No CVs in database to rank.")
             else:
                 try:
-                    from src.matcher.ranker import rank_cvs
-                    cvs = []
+                    cvs_tuple = []
                     for cid, entry in db.items():
                         cv_d = entry.get("cv", {}) or {}
-                        cvs.append({
-                            "cv_id": cid,
-                            "name": cv_d.get("name") or cv_d.get("filename") or "Unknown",
-                            "raw_text": entry.get("raw_text", ""),
-                            "skills": cv_d.get("skills", []),
-                            "total_score": cv_d.get("total_score", 0),
-                        })
-                    ranked = rank_cvs(cvs, current_jd)
+                        cvs_tuple.append((
+                            cid,
+                            cv_d.get("name") or cv_d.get("filename") or "Unknown",
+                            entry.get("raw_text", ""),
+                            tuple(cv_d.get("skills", [])),
+                            cv_d.get("total_score", 0),
+                        ))
+                    ranked = _rank_cvs_cached(tuple(cvs_tuple), current_jd)
                     st.markdown(f"### \U0001F3C6 Ranked candidates — {len(ranked)} CV(s)")
                     rows = []
                     for idx, r in enumerate(ranked, start=1):
-                        rows.append({
-                            "Rank": idx,
-                            "Name": r.get("name", "Unknown"),
-                            "Match %": round(r["final_match_score"] * 100, 1),
-                            "Semantic": round(r["semantic_similarity"], 3),
-                            "Skill Overlap": round(r["skill_overlap"] * 100, 1),
-                            "Rubric Score": r.get("total_score", 0),
-                        })
+                            miss = r.get("missing_skills") or []
+                            rows.append({
+                                "Rank": idx,
+                                "Name": r.get("name", "Unknown"),
+                                "Match %": round(r["final_match_score"] * 100, 1),
+                                "Semantic": round(r["semantic_similarity"], 3),
+                                "Skill Overlap": round(r["skill_overlap"] * 100, 1),
+                                "Rubric Score": r.get("total_score", 0),
+                                "Missing Skills": ", ".join(miss[:5]) + ("\u2026" if len(miss) > 5 else "")
+                                            if miss else "\u2014",
+                            })
                     st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True, use_container_width=True)
 
                     with st.expander("Why this ranking? (weights)"):
@@ -1186,9 +1515,11 @@ def main():
                     pick = st.selectbox("View ranked CV:", [""] + [r["name"] for r in ranked],
                                         key=f"ranking_pick_{st.session_state.active_cv_id}")
                     if pick:
-                        target = next((c for c in cvs if c["name"] == pick), None)
-                        if target and target["cv_id"] in db:
-                            jump_to_cv(target["cv_id"])
+                        hit = next(
+                            (c for c, n, _, _, _ in cvs_tuple if n == pick), None
+                        )
+                        if hit:
+                            jump_to_cv(hit)
                 except Exception as e:
                     st.warning(f"Ranking failed: {e}")
 
@@ -1247,8 +1578,8 @@ def main():
                 st.info("No CVs in database. Upload CVs to search them.")
 
         st.divider()
-        col_dl, _ = st.columns([1, 4])
-        with col_dl:
+        col_json, col_csv = st.columns(2)
+        with col_json:
             cv_json = json.dumps(cv, indent=2, default=str)
             cur_name = os.path.splitext(entry.get("filename", "cv_analysis"))[0]
             st.download_button(
@@ -1256,6 +1587,15 @@ def main():
                 data=cv_json,
                 file_name=f"{cur_name}_analysis.json",
                 mime="application/json",
+            )
+        with col_csv:
+            one_entry = {st.session_state.active_cv_id: entry}
+            one_csv = build_detailed_export_df(one_entry).to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="\U0001F4C4 This CV (CSV)",
+                data=one_csv,
+                file_name=f"{cur_name}_analysis.csv",
+                mime="text/csv",
             )
 
     elif not st.session_state.cv_database:

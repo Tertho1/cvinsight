@@ -1,0 +1,4 @@
+model,dataset,acc,f1_weighted,f1_macro,time_s,recall_Weak,recall_Average,recall_Strong
+distilbert,rubric80/20,0.8852,0.8799,0.5827,11.3,0.0,0.8864,0.9474
+distilbert,ats,0.2556,0.1189,0.1585,,0.0,0.9794,0.0411
+distilbert,netsol,0.4782,0.3094,0.2157,,0.0,1.0,0.0

@@ -1,7 +1,112 @@
 # TODO — CV-Insight
 
-Last updated: 2026-08-08 | App: `streamlit run app/app.py` | Tests: 436 passing
+Last updated: 2026-08-09 | App: `streamlit run streamlit_app.py` | Tests: 482 passing
 ---
+
+## 2026-08-09 — Bangla extraction hardening + demo CVs
+
+- [x] **Two real Bangla demo CVs added** (`demo/banglacv1.txt` senior SWE, `demo/banglacv2.txt` junior IT support) — earlier the only Bangla fixture was a synthetic test string.
+- [x] **Real-CV gap closed (root cause):** section-heading transliteration missed actual CV phrasing, so whole sections silently collapsed into `header`/`other` (only education matched). Deepened `bangla_extractor.py`:
+  - Headings: `কর্মসংস্থান ও অভিজ্ঞতা`, `কর্মসংস্থান`, `প্রযুক্তিগত দক্ষতা`, `কারিগরি দক্ষতা`, `প্রধান দক্ষতা` → experience/skills; `সার্টিফিকেশন ও প্রজেক্ট` → certifications; `ভাষাগত দক্ষতা` → languages; `পেশাগত সারাংশ`/`সারাংশ` → summary
+  - Degrees: dotted `বি.এসসি`/`বি.এ`/`এম.এসসি`, `এইচএসসি`/`এসএসসি`, `অ্যাসোসিয়েট`
+  - Job titles: `প্রকৌশলী`, `সফটওয়্যার প্রকৌশলী`, `আইটি সাপোর্ট এক্সিকিউটিভ`, `সিনিয়র ব্যাকএন্ড ইঞ্জিনিয়ার`
+  - Skills: `টেরাফর্ম`/`ফাস্টএপিআই`/`পোস্টগ্রিএসকিউএল`/`এডব্লিউএস`/`লিনাক্স`/`উইন্ডোজ`
+  - Institutions: `বিশ্ববিদ্যালয়`→University, `পলিটেকনিক`→Polytechnic (feeds English `_INSTITUTION_KEYWORDS`)
+  - BD phone normalization: `+880 1712-345678` (3+4+6) → extractable `+8801712345678`
+  - Language pairs `বাংলা — মাতৃভাষা` (dash format) now parse, with Bengali→English proficiency mapping
+- [x] **Impact:** `banglacv1.txt` 22 → **54 (Average)** (exp 22/25, skills 12 matched, B.Sc, phone, AWS cert); `banglacv2.txt` 6 → **26** (genuinely junior — no projects/certs/leadership, rubric caps by design).
+- [x] **App LLM guard for Bangla** — `app.py` skips the Qwen3 LoRA step for Bengali CVs (the LLM is English-only; garbage output would overwrite the clean rule+NER result via `fuse()`). Consistent with the existing DistilBERT-NER / ML-classifier skips.
+- [x] **Docs updated** — README root (features/run/test), docs index (+ classifier v2/v3 docs), progress entry below.
+- [x] **Tests:** +3 regression (dotted degrees, real-world headings, institution+phone translit), full suite **482 passing**.
+
+---
+
+## Classifier v3 — Hybrid + Synthetic corpus (2026-08-08)
+
+- [x] **Root cause confirmed**: no real corpus has BOTH realistic prose AND rubric labels.
+      primary = rubric + reconstructed text; ATS = real prose + human JD-fit labels; NER =
+      prose + no quality labels. Rubric-scoring real prose fails (split_sections can't
+      section messy resumes -> all Weak, mean ~6.8), which is why the classifier clumps
+      everything onto Average. Score-level Spearman vs benchmark ~0 for every prior
+      corpus (primary -0.14, ats +0.07, primary_ats -0.04).
+- [x] **Synthetic corpus** (`scripts/generate_synthetic_corpus.py` →
+      `data/curated/corpus_synth_v1.csv`, 1500 CVs: 500/richness band) — clean prose in
+      the benchmark style, randomized (names/companies/roles/dates/skills), scored through
+      the real split→extract→score pipe. Rubric-sensitive richness control
+      (rubric_config.json math: exp years, projects×8+link, skills/target 10, degrees+2
+      GPA bonus, 2/cert, langs 2/4/5, leadership 2). Pipe labels land on requested band
+      ~11/12 per band; score span 14→92.
+- [x] **v3 hybrid trains on synth** (`results/classifier_v3_hybrid_synth.pkl`):
+      held-out acc 0.92 / f1w 0.92 / Spearman ρ 0.99; **benchmark 7/10** (artifact & held
+      pipe agree — stable, unlike ATS's 6/2 jitter). **Score-level Spearman +0.758** vs ~0
+      for every prior corpus. Demo sanity now sensible end-to-end (senior Strong 73, weak
+      template Weak 41, priya Weak 49, junior Average 57). The 3 misses (02/05/07) are
+      borderline-Average (53-56) read Weak — noise around the 50 threshold; linear
+      calibration near-identity (1.03x - 1.9), so no fixable bias.
+- [x] **Deeper insight**: the app's extraction is the ceiling — real messy prose scores
+      ~6.8 because split_sections + extract_all lose entities. The classifier gap was
+      downstream of that. Fixing real-prose extraction (audit's text-path rewrites) would
+      unlock directly rubric-scoring ATS/NER as training data.
+- [x] **Acceptance-tested before wiring** (2026-08-08): `scripts/acceptance_hybrid_classifier.py`
+      + full suite. Fresh-process load (ROOT-only, no scripts ns) OK; classes_/label_classes_
+      cover CLASSES; edge inputs (empty/whitespace/single-word/garbage/control-chars/emoji/
+      unicode/LLM-JSON/long/repeated) all return valid Weak/Average/Strong with (3,) proba
+      summing ~1; determinism + batch-vs-single identical. Threshold bands verified. Warm
+      per-CV latency ~120-180ms (embedder is the app's warmed singleton). **Bug found + fixed:**
+      Gaussian predict_proba flipped at threshold boundaries (score≈73 → label Strong but
+      proba argmax Average); rewrote `predict_proba` as CDF over the 50/72 thresholds
+      (scipy erf, vectorized) so argmax ≡ predict() for all scores. Suite back to 450.
+- [x] **Wired into the app** (2026-08-08): `app.py` `load_classifier()` now prefers
+      `models/classifier_v3_hybrid_synth.pkl` ("Hybrid (v3 synth)"), falling back to
+      `xgb_classifier.pkl`. Rationale: 7/10 benchmark agree vs 4/10, score-level
+      Spearman +0.758 vs ~0. Artifact copied results/ → models/. Pipeline step +
+      docstring labels updated. No push (per user); local tests:
+      classifier contract 14 passed; app `classify_text` verified against real demos
+
+## Classifier v3 — Hybrid Engineered + Embedding (2026-08-08)
+
+- [x] **Hybrid classifier built** — `scripts/build_hybrid_classifier.py` → `results/classifier_v3_hybrid.pkl`
+      (XGBRegressor, GPU). Features: 9 macro text stats + 12 engineered CVSchema facets
+      (real split_sections → extract_all path now, not zeroed sections) + 384-d
+      sentence-embedding = **405 dims**. Holds out 80/20 stratified; trained on all data for the artifact.
+- [x] **Extraction realism fixed** — `extract_cv_schema()` (`src/extractor/quality_features.py`) drives
+      `split_sections(raw)` so engineered facets reflect real experience/education/skills; app wrapper
+      `_extract_cv` uses the same path (`src/classifier/hybrid_classifier.py`).
+- [x] **Held-out: acc 0.8862 / f1w 0.8828 / f1m 0.6867 / Spearman ρ 0.8542** (GPU train 2.0s; CPU equiv would be much slower).
+- [x] Benchmark rubric agreement still **4/10** (same root cause as v2: reconstructed-corpus vs real-prose
+      distribution gap); Strong rows read "Average". Demo sanity sensible (junior Weak 48.8, senior Average 61-64).
+- [x] **Superseded before wiring** — the engineered+embedding v3 did NOT bridge the real-prose transfer gap (benchmark 4/10); the synthetic-corpus v3b below did (7/10, unwired→ shipped in `app.py` as `models/classifier_v3_hybrid_synth.pkl`). The GPU-baked `results/classifier_v3_hybrid.pkl` stays a research artifact.
+
+## Classifier v2 — Pre-wiring validation (2026-08-08)
+
+- [x] **Trained + exported v2 classifiers** — `scripts/export_best_classifier.py` →
+      `results/classifier_v2_rf_sm_2026_08_08.pkl` (primary, RF) +
+      `results/classifier_v2_xgb_sm_merged_2026_08_08.pkl` (merged corpus, XGBoost).
+      `docs/classifier_v2_report.md` has corpus composition, 40-run grid leaderboard,
+      human-tier generalization, DistilBERT probe.
+- [x] **App-contract verified in fresh process** — both artifacts load with only ROOT on
+      `sys.path` (`LabelMapper.__module__ = "scripts.export_best_classifier"` resolves via
+      the namespace package). `tests/test_classifier_contract.py` (14 tests) covers
+      empty/short/long/garbage/noisy inputs + proba alignment.
+- [x] **Deployed-label bug fixed** (`app/app.py:289`) — `classify_text` preferred
+      `model.classes_` over `model.label_classes_`; the deployed `xgb_classifier.pkl` has
+      INTEGER `classes_`, so the app rendered "0"/1/2 instead of Average/Strong/Weak.
+      Precedence now `label_classes_`-first. Mirrored in contract tests + simulator.
+      +2 regression tests (`test_deployed_model_renders_labels_not_indices`,
+      `test_deployed_label_classes_cover_all_int_raws`). Suite **450**.
+- [x] **Benchmark rubric agreement measured** — all 3 artifacts (deployed, v2-rf, v2-xgb)
+      agree with `demo/benchmark/_baseline.json` on only **4/10**; Strong rows (01@81,
+      10@87) and Weak rows (04/06/08/09) all read "Average". v2-rf ≡ deployed on every
+      demo/benchmark CV.
+- [x] **Decision: do NOT wire v2 into the app** — keep `models/xgb_classifier.pkl`.
+      Balanced-oversample GPU probe run 2026-08-08 (`scripts/probe_balanced_oversample.py` →
+      `results/classifier_v2_balanced_grid.csv`): a Weak**+Strong**× grid on the rubric corpus
+      **cannot** beat the original (6,1) Weak-only recipe (4/10 rubric-agree; every Strong×
+      ≥2 collapses held-out Strong recall to ~0.05–0.10 AND lowers benchmark agree to 3/10).
+      Root cause = train/test distribution mismatch (corpus is reconstructed TF-IDF text vs the
+      benchmark's real CV prose), not sampling. Closing it needs real-resume training text, not
+      more over-sample. Verdict unchanged: deployed copy stays; v2 line is a demonstration of
+      the grid workflow, not a production classifier.
 
 ## App UX Fixes (2026-08-08)
 
@@ -80,9 +185,12 @@ Last updated: 2026-08-08 | App: `streamlit run app/app.py` | Tests: 436 passing
 - [x] **Bangla section classifier** — built + eval'd (2026-08-05): `scripts/train_bangla_section_classifier.py`
       → `models/bangla_section_classifier.pkl` (char-ngram TF-IDF + LR, 5-fold CV acc 0.9454, held-out F1 0.952).
       Loader `src/extractor/bangla_section.py` (lazy singleton, Onneshon→CVSchema map, graceful None).
-      **Standalone — not wired into `extract_all()`/`app.py`.** 13 tests.
-- [ ] **Bangla upload demo** (deferred, parked): detect + section/translate routing + Bangla entity extraction
-      + Bangla skills/rubric — per research doc §8 recommendation
+      **Wired into the Bangla route (2026-08-08)** — `split_bangla_sections()`
+      uses it as fallback when heading transliteration finds no sections.* 13 tests.
+- [x] **Bangla upload demo (resolved)** — native route shipped 2026-08-08 (see Bangla item below);
+      two real Bangla demo CVs added under demo/ 2026-08-09 (`banglacv1.txt`, `banglacv2.txt`).
+      Residual polish: Bengali company/title regexes (Bangla-script company names keep as raw
+      strings today) and Banglish normalization.
 
 ## Current Priority — Adopted from V2 Proposals
 
@@ -231,14 +339,13 @@ Hardware: RTX 5070 Ti (local inference & training).
   section map, graceful None) + 13 tests (`tests/test_bangla_section.py`). Suite 410 passing.
   Section detection only — entity extraction/scoring still need Bangla handling.
 - [ ] **Phase 1 (now)**: Fine-tune Qwen3-0.6B on English CVs only (complete — see LLM section)
-- [ ] **Bangla upload demo (planned)** — wire Bangla support into the app so a Bangla CV
-  actually evaluates/scores. Currently the Onneshon classifier is standalone (not called by
-  `extract_all()` or `app.py`); a Bangla upload still runs the English-only path and scores
-  ~nothing. Plan: (a) detect Bangla at parse top (`\u0980-\u09FF`); (b) either route segments
-  through `bangla_section.classify_section()` into the existing extractors, or use the
-  cheaper translate-to-English route (IndicTransv2 → `extract_all()`); (c) add Bangla entity
-  extraction (Bengali dates/degrees/companies) + Bangla skills + rubric awareness for a
-  sensible score. Not started.
+- [x] **Bangla upload demo (native route shipped)** — wire Bangla support into the app so a Bangla CV
+  actually evaluates/scores. Done 2026-08-08: (a) detect Bangla at parse top (`\u0980-\u09FF`, `is_bangla`
+  in `src/extractor/bangla_extractor.py`); (b) route through `bangla_section.classify_section()` fallback +
+  Bengali heading transliteration; (c) Bangla entity extraction via transliteration (Bengali digits → ASCII,
+  Bengali months slots → English, বর্তমান → present, Bengali degrees → "Master"/"B.Sc", Bengali languages →
+  English) feeding the existing English extractors; (d) Latin-script skills (Python/Django/AWS) + email/phone
+  pass through → sensible score via the same rubric. App: language badge + NER/ML skip for Bengali.
 - [ ] **Phase 2**: Collect 200-500 Bangla CVs + translate → feed existing extractor (build gate: detect Bangla + IndicTransv2 translate)
 - [ ] **Phase 3**: Native Bangla extraction — needs Bangla section/date/degree regex + custom Bangla resume-NER (Onneshon/BanNERD labels) + Banglish→Bengali normalization
 

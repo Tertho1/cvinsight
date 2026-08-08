@@ -1,0 +1,21 @@
+set,file,pred,proba,max_conf,rubric,rubric_score
+demo,junior_dev.txt,Weak,"0.62,0.35,0.03",0.617,,
+demo,ocrtest.pdf,Average,"0.42,0.54,0.04",0.539,,
+demo,priya_dwivedi_repo_MathewElliot.docx,Weak,"0.63,0.33,0.03",0.634,,
+demo,pro-cv-template-burgundy.docx,Weak,"0.51,0.28,0.21",0.51,,
+demo,Rebecca_Software or Computational Roles.docx,Weak,"0.54,0.24,0.22",0.54,,
+demo,resume_02_rahul_verma.pdf,Weak,"0.43,0.30,0.27",0.427,,
+demo,resume_03_ananya_patel.pdf,Weak,"0.73,0.20,0.08",0.727,,
+demo,resume_04_vikram_singh.pdf,Average,"0.43,0.54,0.03",0.541,,
+demo,senior_python_dev.txt,Weak,"0.66,0.17,0.17",0.658,,
+demo,srbhr_repo_barry_allen_fe.pdf,Weak,"0.67,0.20,0.14",0.668,,
+benchmark,01_clean_standard.docx,Average,"0.12,0.86,0.02",0.86,Strong,81.0
+benchmark,02_two_column.pdf,Average,"0.21,0.59,0.20",0.589,Average,55.0
+benchmark,03_table_docx.docx,Average,"0.12,0.86,0.01",0.864,Average,60.0
+benchmark,04_duplicated_cells.docx,Weak,"0.77,0.15,0.08",0.771,Weak,42.0
+benchmark,05_academic.docx,Weak,"0.62,0.22,0.16",0.619,Average,56.0
+benchmark,06_date_first.pdf,Average,"0.05,0.83,0.12",0.833,Weak,46.0
+benchmark,07_multidegree.docx,Average,"0.30,0.61,0.09",0.611,Average,53.0
+benchmark,08_org_false_positive.docx,Average,"0.07,0.86,0.07",0.861,Weak,48.0
+benchmark,09_sparse_entry.txt,Average,"0.05,0.94,0.01",0.944,Weak,36.0
+benchmark,10_strong_senior.txt,Average,"0.25,0.75,0.00",0.748,Strong,87.0

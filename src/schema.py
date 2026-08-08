@@ -136,6 +136,7 @@ class CVSchema(BaseModel):
     # --- Identity ---
     cv_id: str = ""            # unique ID generated from file content hash
     raw_text: str = ""         # the full extracted text (kept for debugging)
+    language: str = "en"       # "en" | "bangla" (Bengali script route)
 
     # --- Contact ---
     name: str = ""

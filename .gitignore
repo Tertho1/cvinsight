@@ -16,3 +16,6 @@ demo/**
 !models/xgb_booster.model
 !models/xgb_vectorizer.pkl
 !models/xgb_labels.json
+
+# Heavy training checkpoints (DistilBERT NER fine-tune)
+results/distilbert_ckpt/

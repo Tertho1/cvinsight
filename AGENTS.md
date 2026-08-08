@@ -41,7 +41,7 @@ cvinsight/
 │   ├── scorer/           # Rubric scoring engine (✅ done)
 │   ├── matcher/          # JD similarity & ranking (✅ done, Week 6)
 │   └── suggester/        # Suggestion generation (✅ done)
-├── tests/                # 410 unit tests (19 files, all passing)
+├── tests/                # 482 unit tests (23 files, all passing)
 ├── AGENTS.md             # This file
 ├── TODO.md               # Current task tracking
 ├── progress.md           # Weekly progress report
@@ -70,7 +70,7 @@ Pydantic model with nested models (Education, Experience, Project, Certification
 ### Testing
 - Framework: **pytest** (plain asserts, no unittest.TestCase)
 - Run all: `pytest tests/`
-- 410 tests across 19 files (parser: 133, extractor: 285, scorer+suggester+criteria: 61, bangla_section: 13)
+- 482 tests across 23 files (parser: 133, extractor: ~285, scorer+suggester+criteria: 61, bangla: 33, hybrid/classifier/ner-skill: ~28)
 
 ### Python
 - Version: 3.14 (project plan says 3.10 but env is 3.14)
@@ -146,6 +146,9 @@ Pydantic model with nested models (Education, Experience, Project, Certification
 - **Week 5 — ML Text Classifier + Streamlit V1**: TF-IDF → XGBoost (0.8765 acc /
   0.8754 F1) beats LR baseline (0.8581 / 0.8642); `app/app.py` upload → extract →
   score → classify → suggest. Classifier deployed (`models/xgb_classifier.pkl`).
+  **Replaced 2026-08-08** by the hybrid v3 (`models/classifier_v3_hybrid_synth.pkl`,
+  XGBoost + engineered features + DistilBERT semantic embedding; 7/10 benchmark agree
+  vs 4/10, score-level Spearman +0.758; `load_classifier()` prefers it, XGB fallback).
 - **Week 6 — JD Matching & Ranking (V2)**: `src/matcher/` (embedder, semantic_scorer,
   skill_overlap, ranker); ranking tab + JD-match in app. 18 matcher tests.
 - **Week 7 — Fine-Tuning & Final Report**: side-by-side evals (rule vs grounded LLM
@@ -195,9 +198,20 @@ Pydantic model with nested models (Education, Experience, Project, Certification
   → `models/bangla_section_classifier.pkl` (char-ngram TF-IDF + LR, 5-fold CV acc 0.9454);
   loader `src/extractor/bangla_section.py` (lazy singleton, Onneshon→CVSchema section map,
   graceful None); 13 tests (`tests/test_bangla_section.py`), suite 410. Section detection only —
-  not entity extraction. **Standalone, not wired into `extract_all()`/`app.py` yet** — a Bangla
-  upload still runs the English-only path. Bangla upload demo (detection + section/translate
-  routing + Bangla entity extraction + Bangla skills/rubric) tracked in `TODO.md`, not started.
+  not entity extraction. **Wired into `extract_all()` (2026-08-08)** as the Bangla route's sectioning
+  fallback (see Bangla native route below).
+- **Bangla native route shipped 2026-08-08** (`src/extractor/bangla_extractor.py`):
+  `extract_all()` detects Bengali script (`is_bangla`, U+0980–U+09FF ≥10% + ≥3 chars) and routes to
+  `extract_bangla()` — transliterates Bengali digits (০-৯→0-9), months (জানুয়ারি→January), date
+  markers (বর্তমান→present), degree words (স্নাতকোত্তর→Master, বিএসসি→B.Sc), spoken languages
+  (বাংলা→Bengali) and section headings (দক্ষতা→TECHNICAL SKILLS) so the existing English extractors
+  fire; Latin tech terms, emails and phones pass through untouched. `language: "bangla"` on the CVSchema
+  (new field, default "en"). App shows a "Language: Bangla" badge and skips English DistilBERT-NER +
+  hybrid-ML classifier for Bengali CVs. Full extract→score→suggest verified (score 60/Average).
+  +17 tests (`tests/test_bangla_extractor.py`); suite 467.
+  Hardened 2026-08-09 for real CVs (`demo/banglacv1.txt` 22→54, `demo/banglacv2.txt` 6→26): more section-heading
+  phrasings, dotted degrees, job titles, skills, institution words, BD phone normalization, dash-format language
+  pairs; +3 regression tests → suite **482**. App skips the Qwen3 LoRA step for Bengali CVs (English-only LLM).
 - Entity-level NER eval done 2026-08-05 (`scripts/eval_ner_entity_level.py`,
   in-domain span F1 0.988 vs token 0.998; real-resume spans are in-text by construction).
 - Extract seqeval entity-level accuracy on real resumes (current NER F1 is in-domain).

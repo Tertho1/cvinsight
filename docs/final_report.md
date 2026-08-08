@@ -38,7 +38,9 @@ TF-IDF on raw CV text, trained on ~4,500 labeled CVs, 80/20 stratified split.
 | Logistic Regression (TF-IDF) | 0.8581 | 0.8642 |
 | **XGBoost (TF-IDF)** | **0.8765** | **0.8754** |
 
-XGBoost is the deployed classifier (`models/xgb_classifier.pkl`).
+XGBoost is the trained classifier; the deployed classifier is the v3 hybrid
+(`models/classifier_v3_hybrid_synth.pkl`, app load prefers it; `xgb_classifier.pkl`
+remains as fallback).
 
 ### 2.2 Extraction — rule-based vs fine-tuned LLM (Qwen3-0.6B LoRA)
 
@@ -143,6 +145,7 @@ demo set. 387 tests pass; extraction entries/counts verified across all 10 scena
 - **Hallucination-resistant** — rule + grounded-NER paths only emit in-text spans.
 - **Reproducible benchmark** — `scripts/generate_benchmark_cvs.py` regenerates the set.
 - Shipped models: `xgb_classifier.pkl`, `lr_baseline.pkl`,
+  `classifier_v3_hybrid_synth.pkl` (deployed app classifier),
   `qwen3-0.6b-cv-lora-v2` (LLM LoRA), `ner-v1` (distilbert NER).
 
 ---

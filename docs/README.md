@@ -15,6 +15,13 @@ Documentation index. Related files: `AGENTS.md` (agent guide + build order),
 | `final_report.md` | Week 7 — consolidated evaluation metrics and final report |
 | `matcher_datasets_latency.md` | Matcher datasets (with/without) survey, external dataset/method research (ConFit, contrastive fine-tune), latency measurements |
 
+## Classifier research
+
+| Doc | Purpose |
+|---|---|
+| `classifier_v2_report.md` | Classifier v2: corpus composition, grid leaderboard, transfer-gap analysis |
+| `classifier_v3_hybrid.md` | Classifier v3 architecture — why TF-IDF plateaus; hybrid engineered + embedding design |
+
 ## Where each doc lives
 
 - **Root:** `AGENTS.md`, `TODO.md`, `progress.md`, `project_plan.md`, `README.md`
