@@ -443,11 +443,17 @@ NuExtract failed to produce valid JSON for the burgundy DOCX (truncated output).
 9. **SyntaxWarning `"\/"` in test** — Harmless
 10. **Python 3.14 vs 3.10** — All packages work
 
-### Deployment (Streamlit Cloud) — CRITICAL
-13. **1 GB RAM insufficient** — torch (CUDA, ~800MB) + easyocr + spaCy + XGBoost + matplotlib exceed limit. App crashes on startup with OOM (no traceback, generic "Oh no" error, "connection reset by peer" on health check). Fix: CPU-only torch not viable — changes uv dependency tree, breaks package resolution. Need Docker host (Render.com/Railway) or drop easyocr from Cloud deployment.
+### Deployment (Streamlit Cloud) — DEFERRED until project finalized (2026-08-08)
+> Decision: user will do the hosting migration later, once the project is finalized. Plan captured below.
+
+13. **1 GB RAM insufficient** — torch (CUDA, ~800MB) + easyocr + spaCy + XGBoost + matplotlib exceed RAM. App crashes on startup with OOM (no traceback, generic "Oh no" error, "connection reset by peer" on health check). Fix: CPU-only torch not viable — changes uv dependency tree, breaks package resolution. Needed: Docker host (Render.com/Railway) or drop easyocr from Cloud deployment.
 14. **CPU-only torch pin breaks app** — `--extra-index-url https://download.pytorch.org/whl/cpu` with pinned `torch==2.13.0`/`torchvision==0.28.0` causes uv resolver to downgrade packages (numpy 2.5.1→2.4.4, certifi 2026.6.17→2022.12.7), breaking app startup.
-15. **easyocr crash bugs fixed locally** (343 tests passing) — PIL→numpy conversion, tuple destructuring, preprocessing improvements. Working on local machine but cannot verify on Cloud due to OOM.
-16. **Recommended migration**: Render.com (512MB RAM, 750h/mo free, Dockerfile supports `apt-get tesseract-ocr` + `poppler-utils`) or Railway.app.
+15. **easyocr crash bugs fixed locally** (343 tests passing) — PIL→numpy conversion, tuple destructuring, improved preprocessing. Works on local machine; unverifiable on Cloud due to OOM.
+16. **Recommended migration**: Render.com or Railway.app via Docker image.
+17. **Verified in-session facts (2026-08-08)** — no `Dockerfile`/`render.yaml`/Procfile exists yet; easyocr is a *lazy fallback* (`src/parser/ocr_parser.py`, imported on demand) while **tesseract is the primary OCR** (needs `apt-get tesseract-ocr` + `poppler-utils`); `requirements.txt` pins CUDA `torch==cu128` for the local RTX 5070 Ti, which is heavy/useless on a CPU host. Migration work when ready:
+    - Generate `Dockerfile` (apt tesseract/poppler, CPU torch, **no easyocr**) + `render.yaml`/`railway.toml` + a separate CPU-only requirements file (constrain numpy/certifi so uv does not downgrade).
+    - Render free tier is **512MB**, *smaller* than Streamlit Cloud's 1GB — a lean image is mandatory, not optional.
+    - User creates service + pastes the GitHub repo link; cannot be done from inside this repo.
 
 ### Data Quality
 11. **No Strong CVs before config tweak** — Label thresholds adjusted to 72+/50-71/0-49 to match data reality
