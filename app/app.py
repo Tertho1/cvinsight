@@ -1561,6 +1561,7 @@ def main():
                     if results:
                         st.write(f"**{len(results)}** CV(s) match:")
                         rows = []
+                        cids = []
                         for cid, entry, matched_skills, missing in results:
                             cv_d = entry.get("cv", {})
                             rows.append({
@@ -1569,18 +1570,20 @@ def main():
                                 "Matched Skills": ", ".join(sorted(matched_skills)),
                                 "Unmatched Skills": ", ".join(sorted(missing)) if missing else "\u2014",
                             })
+                            cids.append(cid)
                         res_df = pd.DataFrame(rows)
-                        st.dataframe(res_df, width='stretch', hide_index=True, use_container_width=True)
-
-                        for pk_cid, _m, _g, _missing in results:
-                            nm = db[pk_cid]["cv"].get("name", "Unknown")
-                            a, b = st.columns([1, 7])
-                            with a:
-                                if st.button(
-                                        "View", key=f"jump_{pk_cid}",
-                                        help=f"Open {nm} in the detail view",
-                                        width="stretch"):
-                                    jump_to_cv(pk_cid)
+                        st.caption("Click a row to open that CV in the detail view.")
+                        pick = st.dataframe(
+                            res_df,
+                            width='stretch',
+                            hide_index=True,
+                            use_container_width=True,
+                            on_select="rerun",
+                            selection_mode="single-row",
+                            key=f"skill_search_pick_{st.session_state.active_cv_id}",
+                        )
+                        if pick.selection.rows:
+                            jump_to_cv(cids[int(pick.selection.rows[0])])
                     else:
                         st.info("No CVs match the specified skills.")
                 else:
