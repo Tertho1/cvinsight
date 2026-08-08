@@ -1573,6 +1573,7 @@ def main():
                     if results:
                         st.write(f"**{len(results)}** CV(s) match:")
                         rows = []
+                        cids = []
                         for cid, entry, matched_skills, missing in results:
                             cv_d = entry.get("cv", {})
                             rows.append({
@@ -1580,22 +1581,23 @@ def main():
                                 "Score": cv_d.get("total_score", 0),
                                 "Matched Skills": ", ".join(sorted(matched_skills)),
                                 "Unmatched Skills": ", ".join(sorted(missing)) if missing else "\u2014",
-                                "View": f"?open_cv={cid}",
+                                "View": "\u2611 Open",
                             })
+                            cids.append(cid)
                         res_df = pd.DataFrame(rows)
-                        st.caption("Click **\U0001F517 Open CV** in the last column to open that CV in the detail view.")
-                        st.dataframe(
+                        st.caption("Tick the **left box** of a row (or click **\u2611 Open**) to go straight to that CV's detail section \u2014 no page reload.")
+                        pick = st.dataframe(
                             res_df,
                             width='stretch',
                             hide_index=True,
                             use_container_width=True,
-                            column_config={
-                                "View": st.column_config.LinkColumn(
-                                    "View",
-                                    display_text="\U0001F517 Open CV",
-                                ),
-                            },
+                            on_select="rerun",
+                            selection_mode="single-row",
+                            key=f"skill_search_pick_{st.session_state.active_cv_id}",
                         )
+                        if pick.selection.rows:
+                            st.session_state["main_tabs"] = 0
+                            jump_to_cv(cids[int(pick.selection.rows[0])])
                     else:
                         st.info("No CVs match the specified skills.")
                 else:
