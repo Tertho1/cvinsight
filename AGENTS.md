@@ -21,8 +21,11 @@ Pending issues logged 2026-08-09 (discussed, not yet implemented):
 1. **NER model loads on first CV upload, not at boot** — lazy + cached today; consider a
    scripted warm-up at app start so first upload isn't slow (risk: 1GB RAM host boot timeout).
 2. **Multi-user DB leak** — all users share `data/processed/cv_database.json` on the cloud;
-   recommended fix = session-scoped DB (no disk persistence on cloud; keep local persistence),
-   with per-user files (OAuth/query-param identity) or hosted Supabase deferred to Company Mode.
+   **FIXED 2026-08-09**: DB is now session-scoped on hosted deploys. `IS_CLOUD` (env `CV_IS_CLOUD`
+   or the streamlit-cloud `/mount/src` path) makes `load/save/count_database` no-ops, so all CVs
+   live in `st.session_state` per user and never touch the shared disk. Local/CI keeps disk
+   persistence. Per-user files (OAuth/query-param identity) or hosted Supabase deferred to
+   Company Mode.
 
 ## Project Overview
 

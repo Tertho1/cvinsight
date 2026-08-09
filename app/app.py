@@ -47,6 +47,17 @@ PARSE_TIMEOUT = 180
 DATABASE_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "cv_database.json")
 DATABASE_BAK_PATH = DATABASE_PATH + ".bak"
 DATABASE_COUNT_PATH = DATABASE_PATH + ".count"
+
+# Session-scoped DB on hosted deploys.
+#
+# On Streamlit Community Cloud (and similar shared hosting) every visitor runs
+# against the same writable filesystem, so a single cv_database.json would let
+# user A read user B's CVs. We therefore keep the CV database purely in
+# st.session_state on the cloud and only enable the disk-persisted DB when
+# running locally/CI. Override with CV_IS_CLOUD=1/0 for Render/Railway/Docker.
+IS_CLOUD = os.environ.get("CV_IS_CLOUD", "").strip().lower() in ("1", "true", "yes")
+if not IS_CLOUD:
+    IS_CLOUD = os.path.exists("/mount/src")  # Streamlit Cloud clones to /mount/src
 PURPLE = "#818cf8"
 GREEN = "#34d399"
 AMBER = "#fbbf24"
@@ -82,10 +93,15 @@ def app_logo_data_uri() -> str:
 def load_database() -> tuple[dict, str | None]:
     """Load the persisted CV database, returning (db, note).
 
-    If the main file is corrupt, fall back to the .bak snapshot. The note is
-    surfaced to the UI so data loss is never silent (previous behaviour
-    returned {} on any error, which looked exactly like an innocent empty DB).
+    On the cloud the database is session-scoped in st.session_state and is
+    never written to disk, so there is nothing to load (return {} to keep the
+    cloud path isolated per user). Locally, if the main file is corrupt, fall
+    back to the .bak snapshot. The note is surfaced to the UI so data loss is
+    never silent (previous behaviour returned {} on any error, which looked
+    exactly like an innocent empty DB).
     """
+    if IS_CLOUD:
+        return {}, None
     note = None
     if os.path.exists(DATABASE_PATH):
         try:
@@ -107,7 +123,10 @@ def load_database() -> tuple[dict, str | None]:
 def count_saved_cvs() -> int:
     """Number of CV results persisted on disk, read from a tiny sidecar file so
     the app can lazy-load the full results (a cheap count at boot instead of
-    parsing the whole JSON)."""
+    parsing the whole JSON). On the cloud the DB is session-scoped, so there
+    are no on-disk results to count."""
+    if IS_CLOUD:
+        return 0
     if os.path.exists(DATABASE_COUNT_PATH):
         try:
             with open(DATABASE_COUNT_PATH, "r", encoding="utf-8") as f:
@@ -119,6 +138,10 @@ def count_saved_cvs() -> int:
 
 
 def save_database(db: dict) -> None:
+    # On the cloud the DB is session-scoped in st.session_state; writing it to
+    # the shared filesystem would leak one user's CVs to everyone else.
+    if IS_CLOUD:
+        return
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
     # Atomic write: dump to a temp file in the same dir, then replace. Avoids a
     # crash mid-write corrupting the DB (a very real risk for ~MB-sized files).
