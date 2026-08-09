@@ -1,5 +1,29 @@
 # CV Evaluator & Ranking System — Agent Guide
 
+## Last-Known-Good (revert point) — 2026-08-09
+
+**Commit `f390bb0`** (also `3f402a5` for model hosting) — app runs on Streamlit Cloud
+(`cvinsight1.streamlit.app`) with all models auto-downloaded from HuggingFace when
+the gitignored local dirs are absent:
+
+- `g-tertho/cv-matcher-confit` (embedder), `g-tertho/cv-ner-v1` (NER tagger),
+  `g-tertho/cv-qwen3-lora-v2` (LoRA; upload-only, won't *run* on 1GB RAM),
+  plus `models/classifier_v3_hybrid_synth.pkl` + `models/bangla_section_classifier.pkl`
+  committed (0.9MB) for consistent ML labels.
+- HuggingFace fallbacks live in `src/matcher/embedder.py`, `src/extractor/ner_tag.py`,
+  `src/extractor/hybrid.py` (each checks the local dir, falls back to the HF repo id).
+- Verification: NER + matcher loaded from HF on the cloud and produced local-like
+  results; 84+ tests green (matcher/hybrid/ner/bangla).
+
+To revert a bad change: `git reset --hard f390bb0` (before any model-file edits).
+
+Pending issues logged 2026-08-09 (discussed, not yet implemented):
+1. **NER model loads on first CV upload, not at boot** — lazy + cached today; consider a
+   scripted warm-up at app start so first upload isn't slow (risk: 1GB RAM host boot timeout).
+2. **Multi-user DB leak** — all users share `data/processed/cv_database.json` on the cloud;
+   recommended fix = session-scoped DB (no disk persistence on cloud; keep local persistence),
+   with per-user files (OAuth/query-param identity) or hosted Supabase deferred to Company Mode.
+
 ## Project Overview
 
 Automatic CV evaluation, scoring, and ranking tool. Upload a CV (PDF/DOCX/TXT), extract entities, score against a rubric, classify quality, and get improvement suggestions. Optionally match against a job description and rank multiple candidates.
