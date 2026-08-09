@@ -38,9 +38,20 @@ _SPLIT_RE = re.compile(r"[/,;&|]+|\s+and\s+")
 
 
 def load_tagger(adapter="models/ner-v1", device_name="cpu"):
-    """Load the fine-tuned token-classification tagger. device_name: 'cpu'|'gpu'."""
+    """Load the fine-tuned token-classification tagger. device_name: 'cpu'|'gpu'.
+
+    Prefers the local gitignored checkpoint (models/ner-v1). On a hosted/CI
+    deploy where that directory is absent, falls back to the public HF copy
+    (g-tertho/cv-ner-v1) so token-cloud results match local runs.
+    """
     import torch
     from transformers import AutoModelForTokenClassification, AutoTokenizer
+    import os
+    if not os.path.isdir(adapter):
+        import logging
+        logging.getLogger(__name__).warning(
+            "Local %s not present; using public g-tertho/cv-ner-v1", adapter)
+        adapter = "g-tertho/cv-ner-v1"
     model = AutoModelForTokenClassification.from_pretrained(adapter).to(device_name)
     model.eval()
     tokenizer = AutoTokenizer.from_pretrained(adapter)

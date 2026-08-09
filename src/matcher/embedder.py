@@ -24,12 +24,12 @@ def _model_name() -> str:
     if env:
         return env
     # The ConFit fine-tune lives in a gitignored local dir; on a hosted/CI
-    # deploy it is absent, so fall back to its public base model instead of
-    # letting SentenceTransformer 401 against HF as if it were a repo id.
+    # deploy it is absent, so fall back to the public HuggingFace copy instead
+    # of letting SentenceTransformer 401 against HF as if it were a repo id.
     if os.path.isdir(_DEFAULT_MODEL):
         return _DEFAULT_MODEL
-    logger.info("Local %s not present; using public BAAI/bge-small-en-v1.5", _DEFAULT_MODEL)
-    return "BAAI/bge-small-en-v1.5"
+    logger.info("Local %s not present; using public g-tertho/cv-matcher-confit", _DEFAULT_MODEL)
+    return "g-tertho/cv-matcher-confit"
 
 
 # Lazy-loaded singleton

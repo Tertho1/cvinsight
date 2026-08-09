@@ -303,9 +303,6 @@ def get_parser_extractor_scorer():
 
 @st.cache_resource
 def load_ner_tagger():
-    ner_dir = os.path.join(MODELS_DIR, "ner-v1")
-    if not os.path.isdir(ner_dir):
-        return None
     from src.extractor.ner_tag import load_tagger
     return load_tagger(device_name="cpu")
 
