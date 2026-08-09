@@ -41,15 +41,18 @@ def load_model(adapter="models/qwen3-0.6b-cv-lora-v2", device="cpu"):
     controls where inference runs:
       - "cpu":  CPU, float32 (works anywhere, slower)
       - "gpu":  CUDA, bfloat16 (fast, needs NVIDIA GPU + CUDA torch)
+
+    The adapter lives in a gitignored local dir (models/qwen3-0.6b-cv-lora-v2);
+    on a hosted/CI deploy it is absent, so fall back to its public HF copy
+    (g-tertho/cv-qwen3-lora-fz) so hosted inference is possible too.
     """
     import os
     if not os.path.isdir(adapter):
-        raise FileNotFoundError(
-            f"LoRA adapter '{adapter}' is not present on this host (the "
-            "model is a gitignored local dir; on Streamlit Cloud it is "
-            "omitted). Qwen3 LLM fusion is available only where the adapter "
-            "was trained/downloaded."
-        )
+        import logging
+        logging.getLogger(__name__).warning(
+            "Local %s not present; using public g-tertho/cv-qwen3-lora-v2",
+            adapter)
+        adapter = "g-tertho/cv-qwen3-lora-v2"
     import torch
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer
