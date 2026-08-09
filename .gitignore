@@ -7,7 +7,14 @@ __pycache__/
 notebooks/.ipynb_checkpoints/
 
 data/
-models/
+models/*
+!models/xgb_classifier.pkl
+!models/lr_baseline.pkl
+!models/xgb_booster.model
+!models/xgb_vectorizer.pkl
+!models/xgb_labels.json
+!models/classifier_v3_hybrid_synth.pkl
+!models/bangla_section_classifier.pkl
 demo/**
 
 # Keep trained models for deployment
@@ -16,6 +23,8 @@ demo/**
 !models/xgb_booster.model
 !models/xgb_vectorizer.pkl
 !models/xgb_labels.json
+!models/classifier_v3_hybrid_synth.pkl
+!models/bangla_section_classifier.pkl
 
 # Heavy training checkpoints (DistilBERT NER fine-tune)
 results/distilbert_ckpt/
