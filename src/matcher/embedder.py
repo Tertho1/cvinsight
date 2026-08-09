@@ -20,7 +20,16 @@ _DEFAULT_MODEL = "models/matcher-confit"
 
 
 def _model_name() -> str:
-    return os.environ.get("CV_EMBEDDER", "").strip() or _DEFAULT_MODEL
+    env = os.environ.get("CV_EMBEDDER", "").strip()
+    if env:
+        return env
+    # The ConFit fine-tune lives in a gitignored local dir; on a hosted/CI
+    # deploy it is absent, so fall back to its public base model instead of
+    # letting SentenceTransformer 401 against HF as if it were a repo id.
+    if os.path.isdir(_DEFAULT_MODEL):
+        return _DEFAULT_MODEL
+    logger.info("Local %s not present; using public BAAI/bge-small-en-v1.5", _DEFAULT_MODEL)
+    return "BAAI/bge-small-en-v1.5"
 
 
 # Lazy-loaded singleton

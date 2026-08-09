@@ -42,6 +42,14 @@ def load_model(adapter="models/qwen3-0.6b-cv-lora-v2", device="cpu"):
       - "cpu":  CPU, float32 (works anywhere, slower)
       - "gpu":  CUDA, bfloat16 (fast, needs NVIDIA GPU + CUDA torch)
     """
+    import os
+    if not os.path.isdir(adapter):
+        raise FileNotFoundError(
+            f"LoRA adapter '{adapter}' is not present on this host (the "
+            "model is a gitignored local dir; on Streamlit Cloud it is "
+            "omitted). Qwen3 LLM fusion is available only where the adapter "
+            "was trained/downloaded."
+        )
     import torch
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer

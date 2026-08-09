@@ -303,6 +303,9 @@ def get_parser_extractor_scorer():
 
 @st.cache_resource
 def load_ner_tagger():
+    ner_dir = os.path.join(MODELS_DIR, "ner-v1")
+    if not os.path.isdir(ner_dir):
+        return None
     from src.extractor.ner_tag import load_tagger
     return load_tagger(device_name="cpu")
 
@@ -1150,15 +1153,17 @@ def main():
 
                     st.write("\U0001F4AC Fusing DistilBERT NER spans...")
                     try:
-                        if cv.get("language") == "bangla":
-                            pwarns.append("Bengali CV: English DistilBERT NER fusion skipped.")
-                        else:
-                            ner_model, ner_tok, _ = load_ner_tagger()
+                        ner_loaded = load_ner_tagger()
                         from src.extractor.ner_tag import predict_spans, merge_skills, extract_education_gaps
                         groups = {"skill": [], "degree": [], "institution": []}
-                        if cv.get("language") != "bangla":
+                        if ner_loaded is not None and cv.get("language") != "bangla":
+                            ner_model, ner_tok, _ = ner_loaded
                             groups = predict_spans(ner_model, ner_tok, raw_text)
                             cv["skills"] = merge_skills(cv["skills"], groups)
+                        elif cv.get("language") == "bangla":
+                            pwarns.append("Bengali CV: English DistilBERT NER fusion skipped.")
+                        else:
+                            pwarns.append("DistilBERT NER model not present; spaCy/rule output used.")
                         edu_gaps = extract_education_gaps(cv, groups)
                         if edu_gaps:
                             cv["education"] = list(cv["education"] or []) + edu_gaps
@@ -1518,7 +1523,7 @@ def main():
                 df = build_comparison_df(db)
                 if filter_q:
                     df = df[df["Name"].str.lower().str.contains(filter_q.lower(), na=False)]
-                st.dataframe(df, width='stretch', hide_index=True, use_container_width=True)
+                st.dataframe(df, width='stretch', hide_index=True)
                 st.caption(f"{len(db)} CV(s) total")
 
                 st.divider()
@@ -1638,7 +1643,7 @@ def main():
                                 "Missing Skills": ", ".join(miss[:5]) + ("\u2026" if len(miss) > 5 else "")
                                             if miss else "\u2014",
                             })
-                    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True, use_container_width=True)
+                    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
 
                     with st.expander("Why this ranking? (weights)"):
                         w = ranked[0]["weights"] if ranked else {}
