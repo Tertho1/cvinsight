@@ -10,9 +10,8 @@ computed where cheap:
 
   * Classifier  -> data/processed/classifier_comparison.csv
   * LLM vs rules-> models/gate_v2_vs_rules.json (grounded-LLM, 10 demo CVs)
-  * Matcher      -> Spearman rho from notebooks/matching_eval.ipynb (0.193,
-                   n=500) + NDCG@5 computed here on the benchmark set with a
-                   synthesized JD from the strongest CV
+  * Matcher      -> Spearman rho (0.193, n=500) + NDCG@5 computed here on the
+                   benchmark set with a synthesized JD from the strongest CV
   * NER F1       -> recomputed on data/processed/ner_tags_test.jsonl using
                    models/ner-v1 (token-level precision/recall/F1)
 
