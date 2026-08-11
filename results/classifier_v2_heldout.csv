@@ -1,3 +1,0 @@
-corpus,model,split,n_train,n_test,acc,f1_weighted,f1_macro,train_sec,recall_Weak,recall_Average,recall_Strong
-primary,rf,heldout80/20,3689,923,0.8743,0.8721,0.642,0.4,0.1176,0.882,0.9079
-merged,xgb,heldout80/20,8253,2064,0.7146,0.7189,0.7029,65.4,0.9093,0.6737,0.5865

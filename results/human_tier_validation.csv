@@ -1,9 +1,0 @@
-model,feat,dataset,acc,f1_weighted,f1_macro,recall_Weak,recall_Average,recall_Strong
-rf+sm,txt,ats,0.2951,0.2207,0.2117,0.1581,0.86,0.0
-rf+sm,txt,netsol,0.4782,0.3094,0.2157,0.0,1.0,0.0
-xgb+sm,txt,ats,0.398,0.3497,0.2798,0.6054,0.3726,0.0
-xgb+sm,txt,netsol,0.4735,0.31,0.2185,0.0063,0.9877,0.0
-deployed-xgb,txt,ats,0.255,0.1126,0.1422,0.0114,0.9929,0.0016
-deployed-xgb,txt,netsol,0.4499,0.325,0.2439,0.0503,0.9089,0.0176
-deployed-xgb,txt,ats,0.255,0.1126,0.1422,0.0114,0.9929,0.0016
-deployed-xgb,txt,netsol,0.4499,0.325,0.2439,0.0503,0.9089,0.0176

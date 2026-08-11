@@ -163,7 +163,7 @@ cvinsight/
 - **V1** — extract → score → classify → suggest ✅
 - **V2** — JD matching & multi-CV ranking ✅
 - **V3** — NER fine-tuning, Bangla support, hybrid classifier, LLM extraction ✅
-- **Deployment** — live on **Streamlit Cloud** (cvinsight1.streamlit.app). Plans to migrate to **Render.com / Railway** for a dedicated environment (more RAM than the 1 GB Streamlit Cloud tier).
+- **Deployment** — live on **Streamlit Cloud** ([cvinsight1.streamlit.app](https://cvinsight1.streamlit.app), [cvinsight-io.streamlit.app](https://cvinsight-io.streamlit.app)). Plans to migrate to **Render.com / Railway** for a dedicated environment (more RAM than the 1 GB Streamlit Cloud tier).
 
 ---
 
